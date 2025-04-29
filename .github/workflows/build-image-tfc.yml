@@ -8,6 +8,9 @@ on:
       - docker/**
       - .github/workflows/ 
 
+permissions:
+  contents: write
+
 env:
   REGISTRY_NAME: rvsacrtestrvs
   IMAGE_NAME: tfc-agent-custom
