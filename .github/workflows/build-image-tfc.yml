@@ -31,7 +31,6 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-
       - name: Azure ACR login
         run: az acr login --name $REGISTRY_NAME
 
@@ -43,3 +42,16 @@ jobs:
         run: |
           docker build -f docker/Dockerfile -t $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }} .
           docker push $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Get AKS credentials
+        run: az aks get-credentials --resource-group example-resources-aks2 --name pub-aks-rvs --overwrite-existing
+
+      - name: Patch Kubernetes deployment
+        run: |
+          kubectl set image deployment/agents-of-agent-pool-demo \
+            tfc-agent=rvsacrtestrvs.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }} \
+            --namespace edu
+
