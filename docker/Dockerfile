@@ -14,7 +14,7 @@ RUN echo 'tfc-agent ALL=NOPASSWD: /usr/bin/apt-get , /usr/bin/apt' >> /etc/sudoe
 RUN mkdir /.tfc-agent && \
     chmod 700 /.tfc-agent
 
-ADD --chown=tfc-agent hooks /home/tfc-agent/.tfc-agent/hooks
+ADD --chown=tfc-agent:tfc-agent hooks /home/tfc-agent/.tfc-agent/hooks
 RUN chmod +x /home/tfc-agent/.tfc-agent/hooks/*
 
 # Switch back to the tfc-agent user as needed by Terraform agents.
