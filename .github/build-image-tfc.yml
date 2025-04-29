@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - docker
+      - docker/**
       - .github/workflows/ 
 
 env:
@@ -36,5 +36,5 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          docker build -t $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }} .
+          docker build -f docker/Dockerfile -t $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }} .
           docker push $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }}
