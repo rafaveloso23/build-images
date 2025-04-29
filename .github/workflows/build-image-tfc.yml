@@ -10,7 +10,8 @@ on:
 
 permissions:
   contents: write
-
+  id-token: write        # 👈 required for OIDC login to Azure
+  
 env:
   REGISTRY_NAME: rvsacrtestrvs
   IMAGE_NAME: tfc-agent-custom
