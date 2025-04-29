@@ -9,9 +9,9 @@ on:
       - .github/workflows/ 
 
 permissions:
-  contents: write
-  id-token: write        # 👈 required for OIDC login to Azure
-  
+  contents: read
+  id-token: write
+
 env:
   REGISTRY_NAME: rvsacrtestrvs
   IMAGE_NAME: tfc-agent-custom
@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Log in to Azure
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
