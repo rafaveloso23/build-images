@@ -11,5 +11,11 @@ RUN apt-get -y install sudo
 # Permit tfc-agent to use sudo apt-get commands.
 RUN echo 'tfc-agent ALL=NOPASSWD: /usr/bin/apt-get , /usr/bin/apt' >> /etc/sudoers.d/50-tfc-agent
 
+RUN mkdir /.tfc-agent && \
+    chmod 700 /.tfc-agent
+
+ADD --chown=tfc-agent hooks /home/tfc-agent/.tfc-agent/hooks
+RUN chmod +x /home/tfc-agent/.tfc-agent/hooks/*
+
 # Switch back to the tfc-agent user as needed by Terraform agents.
 USER tfc-agent
