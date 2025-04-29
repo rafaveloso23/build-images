@@ -1,3 +1,3 @@
 #!/bin/bash
 
-/home/tfc-agent/.tfc-agent/scripts/pre-plan.sh
+/home/tfc-agent/.tfc-agent/hooks/scripts/pre-plan.sh
