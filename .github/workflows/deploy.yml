@@ -63,7 +63,16 @@ jobs:
 
       - name: Patch AgentPool with versioned image
         run: |
-          kubectl patch agentpool.app.terraform.io/${{ env.AGENTPOOL_NAME }} \
-            --namespace $NAMESPACE \
-            --type merge \
-            -p '{"spec":{"agentDeployment":{"spec":{"containers":[{"name":"tfc-agent","image":"${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}"}]}}}}'
+          kubectl apply -f manifests/agentpool.yml
+
+
+
+
+
+
+
+
+# kubectl patch agentpool.app.terraform.io/${{ env.AGENTPOOL_NAME }} \
+#   --namespace $NAMESPACE \
+#   --type merge \
+#   -p '{"spec":{"agentDeployment":{"spec":{"containers":[{"name":"tfc-agent","image":"${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}"}]}}}}'
