@@ -16,7 +16,7 @@ permissions:
 env:
   REGISTRY_NAME: rvsacrtestrvs
   IMAGE_NAME: tfc-agent-custom
-
+#
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
