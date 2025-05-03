@@ -1,58 +1,57 @@
-# name: Build and Push Docker Image to ACR
+name: Build and Push Docker Image to ACR
 
-# on:
-#   push:
-#     branches:
-#       - main
-#     paths:
-#       - docker/**
-#       - .github/workflows/ 
-#       - manifests/**
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docker/**
+      - .github/workflows/ 
+      - manifests/**
 
-# permissions:
-#   contents: read
-#   id-token: write
+permissions:
+  contents: read
+  id-token: write
 
-# env:
-#   REGISTRY_NAME: rvsacrtestrvs
-#   IMAGE_NAME: tfc-agent-custom
+env:
+  REGISTRY_NAME: rvsacrtestrvs
+  IMAGE_NAME: tfc-agent-custom
 
-# jobs:
-#   build-and-push:
-#     runs-on: ubuntu-latest
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
 
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@v3
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-#       - name: Log in to Azure
-#         uses: azure/login@v2
-#         with:
-#           client-id: ${{ secrets.AZURE_CLIENT_ID }}
-#           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-#           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-#       - name: Azure ACR login
-#         run: az acr login --name $REGISTRY_NAME
+      - name: Azure ACR login
+        run: az acr login --name $REGISTRY_NAME
 
-#       - name: Get short SHA
-#         id: vars
-#         run: echo "tag=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+      - name: Get short SHA
+        id: vars
+        run: echo "tag=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
 
-#       - name: Build and Push Docker Image
-#         run: |
-#           docker build -f docker/Dockerfile -t $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }} .
-#           docker push $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }}
+      - name: Build and Push Docker Image
+        run: |
+          docker build -f docker/Dockerfile -t $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }} .
+          docker push $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }}
 
-#       - name: Set up kubectl
-#         uses: azure/setup-kubectl@v3
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
 
-#       - name: Get AKS credentials
-#         run: az aks get-credentials --resource-group example-resources-aks2 --name pub-aks-rvs --overwrite-existing
+      - name: Get AKS credentials
+        run: az aks get-credentials --resource-group example-resources-aks2 --name pub-aks-rvs --overwrite-existing
 
-#       - name: Patch Kubernetes deployment
-#         run: |
-#           kubectl set image deployment/agents-of-agent-pool-demo \
-#             tfc-agent=rvsacrtestrvs.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }} \
-#             --namespace edu
-
+      - name: Patch Kubernetes deployment
+        run: |
+          kubectl set image deployment/agents-of-agent-pool-demo \
+            tfc-agent=rvsacrtestrvs.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }} \
+            --namespace edu
