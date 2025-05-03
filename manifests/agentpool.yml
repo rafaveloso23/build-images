@@ -22,9 +22,9 @@ spec:
         - name: tfc-agent
           image: rvsacrtestrvs.azurecr.io/tfc-agent-custom:v0.0.0
       terminationGracePeriodSeconds: 900
-  autoscaling:
-    minReplicas: 1
-    maxReplicas: 2
+  # autoscaling:
+  #   minReplicas: 1
+  #   maxReplicas: 2
     cooldownPeriod:
       scaleUpSeconds: 30
       scaleDownSeconds: 30
