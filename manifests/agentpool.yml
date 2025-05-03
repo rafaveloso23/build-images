@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: tfc-agent
-          image: rvsacrtestrvs.azurecr.io/tfc-agent-custom:v0.0.0
+          image: rvsacrtestrvs.azurecr.io/tfc-agent-custom:v1.0.0
       terminationGracePeriodSeconds: 900
   # autoscaling:
   #   minReplicas: 1
