@@ -8,6 +8,7 @@ on:
       - docker/**
       - VERSION
       - .github/workflows/**
+      - manifests/agentpool.yml
 
 permissions:
   contents: read
