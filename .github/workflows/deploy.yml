@@ -1,14 +1,13 @@
-name: Build, Push and Deploy (SHA Tag)
+name: Build, Push and Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
     paths:
       - docker/**
       - VERSION
-      - .github/workflows/**
       - manifests/agentpool.yml
+      - .github/workflows/**
 
 permissions:
   contents: read
@@ -40,14 +39,14 @@ jobs:
       - name: Azure ACR login
         run: az acr login --name $REGISTRY_NAME
 
-      - name: Get short Git SHA
+      - name: Extract Git SHA
         id: sha
-        run: echo "sha_tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+        run: echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push image with SHA tag
+      - name: Build and push Docker image
         run: |
-          docker build -f docker/Dockerfile -t $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.sha.outputs.sha_tag }} .
-          docker push $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.sha.outputs.sha_tag }}
+          docker build -f docker/Dockerfile -t $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.sha.outputs.sha_short }} .
+          docker push $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.sha.outputs.sha_short }}
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
@@ -59,9 +58,13 @@ jobs:
             --name $CLUSTER_NAME \
             --overwrite-existing
 
-      - name: Patch AgentPool with SHA-tagged image
+      - name: Apply manifest (first-time or structural changes)
+        run: |
+          kubectl apply -f manifests/agentpool.yml
+
+      - name: Patch image with Git SHA tag
         run: |
           kubectl patch agentpool.app.terraform.io/${{ env.AGENTPOOL_NAME }} \
             --namespace $NAMESPACE \
             --type merge \
-            -p "{\"spec\":{\"agentDeployment\":{\"spec\":{\"containers\":[{\"name\":\"tfc-agent\",\"image\":\"${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.sha_tag }}\"}]}}}}"
+            -p "{\"spec\":{\"agentDeployment\":{\"spec\":{\"containers\":[{\"name\":\"tfc-agent\",\"image\":\"${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.sha_short }}\"}]}}}}"
