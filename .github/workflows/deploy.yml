@@ -58,9 +58,9 @@ jobs:
             --name $CLUSTER_NAME \
             --overwrite-existing
 
-      - name: Apply manifest (first-time or structural changes)
-        run: |
-          kubectl apply -f manifests/agentpool.yml
+      # - name: Apply manifest (first-time or structural changes)
+      #   run: |
+      #     kubectl apply -f manifests/agentpool.yml
 
       - name: Patch image with Git SHA tag
         run: |
