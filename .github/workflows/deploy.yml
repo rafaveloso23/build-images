@@ -1,0 +1,68 @@
+name: Build, Push and Deploy (Semver)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docker/**
+      - VERSION
+      - .github/workflows/**
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGISTRY_NAME: rvsacrtestrvs
+  IMAGE_NAME: tfc-agent-custom
+  RESOURCE_GROUP: example-resources-aks2
+  CLUSTER_NAME: pub-aks-rvs
+  NAMESPACE: edu
+  AGENTPOOL_NAME: agent-pool-demo
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure ACR login
+        run: az acr login --name $REGISTRY_NAME
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(cat VERSION)
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build and push image with version tag
+        run: |
+          docker build -f docker/Dockerfile -t $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.version.outputs.version }} .
+          docker push $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.version.outputs.version }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Get cluster credentials
+        run: |
+          az aks get-credentials \
+            --resource-group $RESOURCE_GROUP \
+            --name $CLUSTER_NAME \
+            --overwrite-existing
+
+      - name: Patch AgentPool with versioned image
+        run: |
+          kubectl patch agentpool.app.terraform.io/${{ env.AGENTPOOL_NAME }} \
+            --namespace $NAMESPACE \
+            --type merge \
+            -p '{"spec":{"agentDeployment":{"spec":{"containers":[{"name":"tfc-agent","image":"${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}"}]}}}}'
