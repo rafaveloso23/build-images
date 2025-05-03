@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - docker/**
-      - .github/workflows/ 
+      - .github/workflows/**
       - manifests/**
 
 permissions:
