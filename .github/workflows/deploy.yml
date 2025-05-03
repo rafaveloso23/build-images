@@ -1,4 +1,4 @@
-name: Build, Push and Deploy (Semver)
+name: Build, Push and Deploy (SHA Tag)
 
 on:
   push:
@@ -40,16 +40,14 @@ jobs:
       - name: Azure ACR login
         run: az acr login --name $REGISTRY_NAME
 
-      - name: Read version
-        id: version
-        run: |
-          VERSION=$(cat VERSION)
-          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+      - name: Get short Git SHA
+        id: sha
+        run: echo "sha_tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
-      - name: Build and push image with version tag
+      - name: Build and push image with SHA tag
         run: |
-          docker build -f docker/Dockerfile -t $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.version.outputs.version }} .
-          docker push $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.version.outputs.version }}
+          docker build -f docker/Dockerfile -t $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.sha.outputs.sha_tag }} .
+          docker push $REGISTRY_NAME.azurecr.io/$IMAGE_NAME:${{ steps.sha.outputs.sha_tag }}
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
@@ -61,18 +59,9 @@ jobs:
             --name $CLUSTER_NAME \
             --overwrite-existing
 
-      - name: Patch AgentPool with versioned image
+      - name: Patch AgentPool with SHA-tagged image
         run: |
-          kubectl apply -f manifests/agentpool.yml
-
-
-
-
-
-
-
-
-# kubectl patch agentpool.app.terraform.io/${{ env.AGENTPOOL_NAME }} \
-#   --namespace $NAMESPACE \
-#   --type merge \
-#   -p '{"spec":{"agentDeployment":{"spec":{"containers":[{"name":"tfc-agent","image":"${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}"}]}}}}'
+          kubectl patch agentpool.app.terraform.io/${{ env.AGENTPOOL_NAME }} \
+            --namespace $NAMESPACE \
+            --type merge \
+            -p "{\"spec\":{\"agentDeployment\":{\"spec\":{\"containers\":[{\"name\":\"tfc-agent\",\"image\":\"${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.sha_tag }}\"}]}}}}"
