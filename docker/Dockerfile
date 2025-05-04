@@ -1,4 +1,5 @@
 FROM hashicorp/tfc-agent:latest
+
 # Switch the to root user in order to perform privileged actions such as
 # installing software.
 USER root
@@ -15,6 +16,7 @@ RUN mkdir /.tfc-agent && \
 
 ADD --chown=tfc-agent:tfc-agent hooks /home/tfc-agent/.tfc-agent/hooks
 RUN chmod +x /home/tfc-agent/.tfc-agent/hooks/* && \
+    chown tfc-agent:tfc-agent /home/tfc-agent/.tfc-agent/hooks/scripts/pre-plan.sh && \
     chmod +x /home/tfc-agent/.tfc-agent/hooks/scripts/pre-plan.sh
 
 # Switch back to the tfc-agent user as needed by Terraform agents.
