@@ -44,7 +44,7 @@ jobs:
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
-
+#
       - name: Get AKS credentials
         run: az aks get-credentials --resource-group example-resources-aks2 --name pub-aks-rvs --overwrite-existing
 
