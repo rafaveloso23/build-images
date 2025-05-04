@@ -18,6 +18,6 @@ ADD --chown=tfc-agent:tfc-agent hooks /home/tfc-agent/.tfc-agent/hooks
 RUN chmod +x /home/tfc-agent/.tfc-agent/hooks/* && \
     chown tfc-agent:tfc-agent /home/tfc-agent/.tfc-agent/hooks/scripts/pre-plan.sh && \
     chmod +x /home/tfc-agent/.tfc-agent/hooks/scripts/pre-plan.sh
-
+#
 # Switch back to the tfc-agent user as needed by Terraform agents.
 USER tfc-agent
