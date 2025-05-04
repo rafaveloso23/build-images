@@ -2,7 +2,7 @@ FROM hashicorp/tfc-agent:latest
 
 USER root
 
-# Install sudo (optional, if needed)
+## Install sudo (optional, if needed)
 RUN apt-get -y update && apt-get -y install sudo
 
 # Allow tfc-agent to run specific sudo commands
