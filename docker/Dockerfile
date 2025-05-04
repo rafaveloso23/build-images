@@ -15,7 +15,7 @@ RUN mkdir -p /home/tfc-agent/.tfc-agent/hooks/scripts
 ADD --chown=tfc-agent:tfc-agent hooks/ /home/tfc-agent/.tfc-agent/hooks/
 
 # Make sure all hooks are executable
-RUN chmod +x /home/tfc-agent/.tfc-agent/hooks/pre-plan \
+RUN chmod +x /home/tfc-agent/.tfc-agent/hooks/terraform-pre-plan \
     && chmod +x /home/tfc-agent/.tfc-agent/hooks/scripts/pre-plan.sh
 
 USER tfc-agent
