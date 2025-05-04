@@ -48,13 +48,8 @@ jobs:
       - name: Get AKS credentials
         run: az aks get-credentials --resource-group example-resources-aks2 --name pub-aks-rvs --overwrite-existing
 
-      - name: Set Image Kubernetes deployment
+      - name: Patch new Image Kubernetes deployment
         run: |
-          kubectl set image deployment/agents-of-agent-pool-demo tfc-agent=rvsacrtestrvs.azurecr.io/tfc-agent-custom:${{ steps.vars.outputs.tag }} --namespace edu
-
-      # - name: Patch Image Kubernetes deployment
-      #   run: |
-      #     kubectl patch deployment agents-of-agent-pool-demo -p '{"spec":{"template":{"spec":{"containers":[{"name":"tfc-agent","image":"rvsacrtestrvs.azurecr.io/tfc-agent-custom:${{ steps.vars.outputs.tag }}"}}]}}}}' --namespace edu \
-      #     kubectl rollout status deployment/agents-of-agent-pool-demo --namespace edu
+          kubectl patch agentpool agent-pool-demo -n edu   --type='json'   -p='[{"op": "replace", "path": "/spec/agentDeployment/spec/containers/0/image", "value":"rvsacrtestrvs.azurecr.io/tfc-agent-custom:${{ steps.vars.outputs.tag }}"}]'
 
       
