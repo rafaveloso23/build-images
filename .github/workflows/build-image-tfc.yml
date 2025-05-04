@@ -54,4 +54,9 @@ jobs:
         run: |
           kubectl set image deployment/agents-of-agent-pool-demo \
             tfc-agent=rvsacrtestrvs.azurecr.io/$IMAGE_NAME:${{ steps.vars.outputs.tag }} \
-            --namespace edu
+            --namespace edu \
+          kubectl patch deployment agents-of-agent-pool-demo -p '{"spec":{"template":{"spec":{"containers":[{"name":"tfc-agent","image":"rvsacrtestrvs.azurecr.io/tfc-agent-custom:${{ steps.vars.outputs.tag }}"}}]}}}}' --namespace edu \
+          kubectl rollout status deployment/agents-of-agent-pool-demo --namespace edu
+
+
+      
