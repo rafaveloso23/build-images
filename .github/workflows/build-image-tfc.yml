@@ -50,6 +50,6 @@ jobs:
 
       - name: Patch new Image Kubernetes deployment
         run: |
-          kubectl patch agentpool agent-pool-demo -n edu   --type='json'   -p='[{"op": "replace", "path": "/spec/agentDeployment/spec/containers/0/image", "value":"rvsacrtestrvs.azurecr.io/tfc-agent-custom:${{ steps.vars.outputs.tag }}"}]'
+          kubectl patch agentpool agent-pool-demo -n edu --type='json' -p='[{"op": "replace", "path": "/spec/agentDeployment/spec/containers/0/image", "value":"rvsacrtestrvs.azurecr.io/tfc-agent-custom:${{ steps.vars.outputs.tag }}"}]'
 
       
