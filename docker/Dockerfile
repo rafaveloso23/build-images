@@ -19,6 +19,7 @@ RUN chmod +x /home/tfc-agent/.tfc-agent/hooks/terraform-pre-plan \
     && chmod +x /home/tfc-agent/.tfc-agent/hooks/scripts/pre-plan.sh
 
 # Set OTLP exporter address as environment variable
-ENV TFC_AGENT_OTLP_ADDRESS=172.212.113.151:4317
+ENV TFC_AGENT_OTLP_ADDRESS=9.169.67.56:4317
+
 
 USER tfc-agent
