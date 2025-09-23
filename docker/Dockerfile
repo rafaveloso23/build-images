@@ -9,7 +9,7 @@ RUN apt-get update \
  && python3 -m pip install --no-cache-dir ansible-core \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-## (Opcional) permitir alguns comandos via sudo
+### (Opcional) permitir alguns comandos via sudo
 RUN echo 'tfc-agent ALL=NOPASSWD: /usr/bin/apt-get , /usr/bin/apt' > /etc/sudoers.d/50-tfc-agent
 
 # Hooks
