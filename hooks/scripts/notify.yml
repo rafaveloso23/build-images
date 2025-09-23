@@ -6,7 +6,7 @@
   vars:
     api_base: "https://app.terraform.io/api/v2"
 
-    # Variables vindas do ambiente (Variable Set / pre-plan.sh)
+    # Environment (Variable Set / pre-plan.sh)
     hcp_org: "{{ lookup('env', 'HCP_ORG') }}"
     hcp_token: "{{ lookup('env', 'HCP_TF_TOKEN') }}"
     ws_name: "{{ lookup('env', 'TFC_WORKSPACE_NAME') }}"
@@ -14,10 +14,7 @@
     notify_name: "{{ lookup('env', 'NOTIFY_NAME') | default('Webhook server test', true) }}"
     notify_destination_type: "{{ lookup('env', 'NOTIFY_DESTINATION_TYPE') | default('generic', true) }}"
     notify_url: "{{ lookup('env', 'NOTIFY_URL') | default('', true) }}"
-    notify_enabled: "{{ (lookup('env', 'NOTIFY_ENABLED') | default('true', true)) | bool }}"
     notify_triggers_raw: "{{ lookup('env', 'NOTIFY_TRIGGERS') | default('run:created,run:completed,run:errored', true) }}"
-
-  vars_prompt: []
 
   tasks:
     - name: "Montar lista de triggers"
@@ -30,7 +27,7 @@
           - notify_destination_type == 'email' or (notify_url | length) > 0
         fail_msg: "NOTIFY_URL é obrigatório para destination-type {{ notify_destination_type }}"
 
-    - name: "Obter workspace por slug (org + nome)"
+    - name: "Obter workspace (org + nome)"
       uri:
         url: "{{ api_base }}/organizations/{{ hcp_org }}/workspaces/{{ ws_name }}"
         method: GET
@@ -56,7 +53,7 @@
         status_code: [200]
       register: list_resp
 
-    - name: "Verificar se já existe uma notification com o mesmo nome/destino"
+    - name: "Filtrar por nome + destination-type"
       set_fact:
         existing_nc: >-
           {{
@@ -66,8 +63,8 @@
             | list
           }}
 
-    # ---------- CREATE (sempre disabled para evitar verify no POST) ----------
-    - name: "Criar notification se não existir (POST com type PLURAL, enabled=false)"
+    # --- CREATE APENAS (enabled=false p/ evitar verify automático no POST) ---
+    - name: "Criar notification se não existir"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: POST
@@ -81,7 +78,7 @@
             type: "notification-configurations"     # PLURAL no create
             attributes:
               name: "{{ notify_name }}"
-              enabled: false                        # cria desabilitada
+              enabled: false                        # cria desabilitada para garantir sucesso
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
@@ -94,47 +91,6 @@
       set_fact:
         notification_id: "{{ (create_resp.json.data.id if (existing_nc | length) == 0 else existing_nc[0].id) }}"
 
-    # ---------- PATCH (idempotente; aplica o enabled real e demais atributos) ----------
-    - name: "Aplicar atributos desejados (PATCH com type PLURAL)"
-      uri:
-        url: "{{ api_base }}/notification-configurations/{{ notification_id }}"
-        method: PATCH
-        headers:
-          Authorization: "Bearer {{ hcp_token }}"
-          Content-Type: "application/vnd.api+json"
-          Accept: "application/vnd.api+json"
-        body_format: json
-        body:
-          data:
-            id: "{{ notification_id }}"
-            type: "notification-configurations"     # PLURAL no update
-            attributes:
-              name: "{{ notify_name }}"
-              enabled: "{{ notify_enabled | bool }}" # evita erro de parse; valor é boolean
-              destination-type: "{{ notify_destination_type }}"
-              url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
-              triggers: "{{ notify_triggers }}"
-        return_content: true
-        status_code: [200]
-
-    # ---------- VERIFY (só quando enabled=true e não for email) ----------
-    - name: "Verificar delivery (actions/verify) se enabled e não for email"
-      uri:
-        url: "{{ api_base }}/notification-configurations/{{ notification_id }}/actions/verify"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ hcp_token }}"
-          Content-Type: "application/vnd.api+json"
-          Accept: "application/vnd.api+json"
-        body_format: json
-        body:
-          data:
-            id: "{{ notification_id }}"
-            type: "notification-configurations"
-        return_content: true
-        status_code: [200, 400]
-      when: notify_enabled and notify_destination_type != 'email'
-
     - name: "Resumo"
       debug:
         msg:
@@ -142,5 +98,4 @@
           - "notification_id={{ notification_id }}"
           - "name={{ notify_name }}"
           - "destination-type={{ notify_destination_type }}"
-          - "enabled={{ notify_enabled }}"
-          - "triggers={{ notify_triggers }}"
+          - "created={{ (existing_nc | length) == 0 }}"
