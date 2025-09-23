@@ -66,7 +66,8 @@
             | list
           }}
 
-    - name: "Criar notification se não existir (POST com type PLURAL)"
+    # ---------- CREATE (sempre disabled para evitar verify no POST) ----------
+    - name: "Criar notification se não existir (POST com type PLURAL, enabled=false)"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: POST
@@ -77,10 +78,10 @@
         body_format: json
         body:
           data:
-            type: "notification-configurations"    # <--- PLURAL no CREATE
+            type: "notification-configurations"     # PLURAL no create
             attributes:
               name: "{{ notify_name }}"
-              enabled: false                       # cria desabilitada; depois fazemos PATCH
+              enabled: false                        # cria desabilitada
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
@@ -89,27 +90,27 @@
       register: create_resp
       when: (existing_nc | length) == 0
 
-
     - name: "Definir notification_id (novo ou existente)"
       set_fact:
         notification_id: "{{ (create_resp.json.data.id if (existing_nc | length) == 0 else existing_nc[0].id) }}"
 
-    # ---------- PATCH (idempotente) ----------
-    - name: "Aplicar atributos desejados (PATCH com type PLURAL, enabled boolean real)"
+    # ---------- PATCH (idempotente; aplica o enabled real e demais atributos) ----------
+    - name: "Aplicar atributos desejados (PATCH com type PLURAL)"
       uri:
         url: "{{ api_base }}/notification-configurations/{{ notification_id }}"
         method: PATCH
         headers:
           Authorization: "Bearer {{ hcp_token }}"
           Content-Type: "application/vnd.api+json"
+          Accept: "application/vnd.api+json"
         body_format: json
         body:
           data:
             id: "{{ notification_id }}"
-            type: "notification-configurations"   # <- PLURAL no update
+            type: "notification-configurations"     # PLURAL no update
             attributes:
               name: "{{ notify_name }}"
-              enabled: {{ notify_enabled }}       # <- sem aspas, boolean de verdade
+              enabled: !!bool "{{ notify_enabled }}" # força boolean real; evita erro de YAML
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
@@ -124,6 +125,7 @@
         headers:
           Authorization: "Bearer {{ hcp_token }}"
           Content-Type: "application/vnd.api+json"
+          Accept: "application/vnd.api+json"
         body_format: json
         body:
           data:
