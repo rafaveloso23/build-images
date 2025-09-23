@@ -1,2 +1,2 @@
 #!/bin/bash
-echo "Iniciando o Plan"
+echo "Iniciando o Plan RafaS"
