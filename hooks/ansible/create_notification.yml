@@ -1,0 +1,52 @@
+---
+# Example Ansible playbook to create a notification for a given HCP Terraform workspace.
+# This playbook is intentionally minimal: it validates inputs and performs a POST using the uri module.
+# You must adapt the API path, headers and payload to your HCP / Terraform Cloud API.
+
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    # Required vars (provide via environment variables or --extra-vars):
+    # hcp_token: HCP/TC API token with permissions to create notifications
+    # hcp_api_url: Base API url, e.g. https://app.terraform.io/api/v2
+    # org_name: organization name (if applicable)
+    # workspace_name: workspace identifier passed from pre-plan script
+    # Optional environment-backed variables (will be used if extra-vars are not provided)
+    hcp_token: "{{ lookup('env', 'HCP_TOKEN') | default(lookup('env', 'HCP_API_TOKEN') | default('', true), true) }}"
+    hcp_api_url: "{{ lookup('env', 'HCP_API_URL') | default(lookup('env','TF_API_URL') | default('', true), true) }}"
+    org_name: "{{ lookup('env','HCP_ORG') | default('', true) }}"
+    # Slack/webhook details as env fallbacks
+    slack_webhook: "{{ lookup('env','SLACK_WEBHOOK') | default('', true) }}"
+    slack_channel: "{{ lookup('env','SLACK_CHANNEL') | default('#infra-notifications', true) }}"
+  tasks:
+    - name: Ensure required variables are provided
+      assert:
+        that:
+          - (hcp_token is defined) and (hcp_token | length > 0)
+          - (hcp_api_url is defined) and (hcp_api_url | length > 0)
+          - (workspace_name is defined) and (workspace_name | length > 0)
+        fail_msg: "Required vars: hcp_token, hcp_api_url, workspace_name (org_name optional). Provide them via env or --extra-vars."
+
+    - name: Create notification (placeholder)
+      uri:
+        url: "{{ hcp_api_url }}/organizations/{{ org_name | default('') }}/workspaces/{{ workspace_name }}/notifications"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ hcp_token }}"
+          Content-Type: "application/json"
+        status_code: [200,201,202]
+        body_format: json
+        body: |
+          {
+            "type": "slack",
+            "data": {
+              "channel": "{{ slack_channel }}",
+              "url": "{{ slack_webhook }}"
+            }
+          }
+      register: notify_resp
+
+    - name: Show create notification response
+      debug:
+        var: notify_resp
