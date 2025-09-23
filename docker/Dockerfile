@@ -11,7 +11,7 @@ RUN echo 'tfc-agent ALL=NOPASSWD: /usr/bin/apt-get , /usr/bin/apt' >> /etc/sudoe
 # Create hooks directory with correct permissions
 RUN mkdir -p /home/tfc-agent/.tfc-agent/hooks/scripts
 
-# Add hook scripts with proper ownership
+## Add hook scripts with proper ownership
 ADD --chown=tfc-agent:tfc-agent hooks/ /home/tfc-agent/.tfc-agent/hooks/
 
 # Make sure all hooks are executable
