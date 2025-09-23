@@ -110,7 +110,7 @@
             type: "notification-configurations"     # PLURAL no update
             attributes:
               name: "{{ notify_name }}"
-              enabled: !!bool "{{ notify_enabled }}" # força boolean real; evita erro de YAML
+              enabled: "{{ notify_enabled | bool }}" # evita erro de parse; valor é boolean
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
