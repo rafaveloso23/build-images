@@ -6,7 +6,7 @@
   vars:
     api_base: "https://app.terraform.io/api/v2"
 
-    # Variables vindas do ambiente (exportadas no pre-plan.sh ou Variable Set)
+    # Variables vindas do ambiente (Variable Set / pre-plan.sh)
     hcp_org: "{{ lookup('env', 'HCP_ORG') }}"
     hcp_token: "{{ lookup('env', 'HCP_TF_TOKEN') }}"
     ws_name: "{{ lookup('env', 'TFC_WORKSPACE_NAME') }}"
@@ -66,7 +66,8 @@
             | list
           }}
 
-    - name: "Criar notification se não existir (POST com type SINGULAR)"
+    # ---------- CREATE (sempre disabled) ----------
+    - name: "Criar notification se não existir (POST com type SINGULAR, enabled=false)"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: POST
@@ -76,10 +77,10 @@
         body_format: json
         body:
           data:
-            type: "notification-configuration"   # SINGULAR no create
+            type: "notification-configuration"   # <- SINGULAR (doc)
             attributes:
               name: "{{ notify_name }}"
-              enabled: "{{ notify_enabled }}"
+              enabled: false                      # <- cria sempre desabilitada
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
@@ -88,9 +89,14 @@
       register: create_resp
       when: (existing_nc | length) == 0
 
-    - name: "Atualizar notification existente (PATCH com type PLURAL)"
+    - name: "Definir notification_id (novo ou existente)"
+      set_fact:
+        notification_id: "{{ (create_resp.json.data.id if (existing_nc | length) == 0 else existing_nc[0].id) }}"
+
+    # ---------- PATCH (idempotente) ----------
+    - name: "Aplicar atributos desejados (PATCH com type PLURAL, enabled boolean real)"
       uri:
-        url: "{{ api_base }}/notification-configurations/{{ existing_nc[0].id }}"
+        url: "{{ api_base }}/notification-configurations/{{ notification_id }}"
         method: PATCH
         headers:
           Authorization: "Bearer {{ hcp_token }}"
@@ -98,26 +104,19 @@
         body_format: json
         body:
           data:
-            id: "{{ existing_nc[0].id }}"
-            type: "notification-configurations"  # PLURAL no update
+            id: "{{ notification_id }}"
+            type: "notification-configurations"   # <- PLURAL no update
             attributes:
               name: "{{ notify_name }}"
-              enabled: "{{ notify_enabled }}"
+              enabled: {{ notify_enabled }}       # <- sem aspas, boolean de verdade
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
         return_content: true
         status_code: [200]
-      when: (existing_nc | length) > 0
 
-    - name: "Usar o ID da notification recém-criada ou existente"
-      set_fact:
-        notification_id: >-
-          {{
-            (create_resp.json.data.id if (existing_nc | length) == 0 else existing_nc[0].id)
-          }}
-
-    - name: "Opcional: verificar/validar delivery da notification (actions/verify) se enabled e não for email"
+    # ---------- VERIFY (só quando enabled=true e não for email) ----------
+    - name: "Verificar delivery (actions/verify) se enabled e não for email"
       uri:
         url: "{{ api_base }}/notification-configurations/{{ notification_id }}/actions/verify"
         method: POST
