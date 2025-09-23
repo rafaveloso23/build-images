@@ -11,7 +11,7 @@
     hcp_token: "{{ lookup('env', 'HCP_TF_TOKEN') }}"
     ws_name: "{{ lookup('env', 'TFC_WORKSPACE_NAME') }}"
 
-    # Liga o fluxo completo quando true (aceita WORKSPACE_NOTIFICATION_ENABLED ou workspace_notification_enabled)
+    # Só cria quando esta flag estiver true (aceita WORKSPACE_NOTIFICATION_ENABLED ou workspace_notification_enabled)
     workspace_notification_enabled: "{{ (lookup('env','WORKSPACE_NOTIFICATION_ENABLED') or lookup('env','workspace_notification_enabled') or 'false') | bool }}"
 
     # Parâmetros da notification (sempre generic)
@@ -20,6 +20,10 @@
     notify_triggers_raw: "{{ lookup('env', 'NOTIFY_TRIGGERS') | default('run:created,run:completed,run:errored', true) }}"
 
   tasks:
+    - name: "Encerrar cedo se a flag não estiver habilitada"
+      meta: end_play
+      when: not workspace_notification_enabled
+
     - name: "Montar lista de triggers"
       set_fact:
         notify_triggers: "{{ notify_triggers_raw.split(',') | map('trim') | list }}"
@@ -66,8 +70,8 @@
             | list
           }}
 
-    # --- CREATE: sempre disabled (evita verify automático no POST) ---
-    - name: "Criar notification generic se não existir"
+    # --- CREATE: apenas quando não existir; enabled=true no POST ---
+    - name: "Criar notification generic (enabled=true) se não existir"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: POST
@@ -81,60 +85,20 @@
             type: "notification-configurations"   # PLURAL no create
             attributes:
               name: "{{ notify_name }}"
-              enabled: false
+              enabled: true                       # cria já habilitada
               destination-type: "generic"
               url: "{{ notify_url }}"
               triggers: "{{ notify_triggers }}"
         return_content: true
-        status_code: [201]
+        status_code: [201, 400]                   # 400 = verify falhou; ok para seu teste
       register: create_resp
+      failed_when: false
       when: (existing_nc | length) == 0
 
     - name: "Definir notification_id (novo ou existente)"
       set_fact:
-        notification_id: "{{ (create_resp.json.data.id if (existing_nc | length) == 0 else existing_nc[0].id) }}"
-
-    # --- PATCH para habilitar e alinhar atributos (somente quando enabled=true) ---
-    - name: "Habilitar e ajustar atributos (PATCH)"
-      uri:
-        url: "{{ api_base }}/notification-configurations/{{ notification_id }}"
-        method: PATCH
-        headers:
-          Authorization: "Bearer {{ hcp_token }}"
-          Content-Type: "application/vnd.api+json"
-          Accept: "application/vnd.api+json"
-        body_format: json
-        body:
-          data:
-            id: "{{ notification_id }}"
-            type: "notification-configurations"
-            attributes:
-              name: "{{ notify_name }}"
-              enabled: true
-              destination-type: "generic"
-              url: "{{ notify_url }}"
-              triggers: "{{ notify_triggers }}"
-        return_content: true
-        status_code: [200]
-      when: workspace_notification_enabled
-
-    # --- VERIFY: aceita 200 ou 400 e não falha o run ---
-    - name: "Verify (actions/verify) quando habilitado"
-      uri:
-        url: "{{ api_base }}/notification-configurations/{{ notification_id }}/actions/verify"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ hcp_token }}"
-          Content-Type: "application/vnd.api+json"
-          Accept: "application/vnd.api+json"
-        body_format: json
-        body:
-          data:
-            id: "{{ notification_id }}"
-            type: "notification-configurations"
-        return_content: true
-        status_code: [200, 400]
-      when: workspace_notification_enabled
+        notification_id: "{{ (create_resp.json.data.id if (existing_nc | length) == 0 else existing_nc[0].id) | default('unknown') }}"
+      when: create_resp is defined or (existing_nc | length) > 0
 
     - name: "Resumo"
       debug:
@@ -143,5 +107,6 @@
           - "notification_id={{ notification_id }}"
           - "name={{ notify_name }}"
           - "destination-type=generic"
-          - "enabled_now={{ workspace_notification_enabled }}"
-          - "triggers={{ notify_triggers }}"
+          - "created_now={{ (existing_nc | length) == 0 }}"
+          - "post_status={{ create_resp.status | default('skipped') }}"
+          - "note=se post_status=400, o create falhou por verify; como seu objetivo é só testar a chamada, o play não falha"
