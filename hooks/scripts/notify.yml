@@ -2,10 +2,11 @@
 - name: "Configurar notification no HCP Terraform (pre-plan)"
   hosts: localhost
   gather_facts: false
+
   vars:
     api_base: "https://app.terraform.io/api/v2"
 
-    # Variables vindas do ambiente (exportadas no pre-plan.sh)
+    # Variables vindas do ambiente (exportadas no pre-plan.sh ou Variable Set)
     hcp_org: "{{ lookup('env', 'HCP_ORG') }}"
     hcp_token: "{{ lookup('env', 'HCP_TF_TOKEN') }}"
     ws_name: "{{ lookup('env', 'TFC_WORKSPACE_NAME') }}"
@@ -17,10 +18,17 @@
     notify_triggers_raw: "{{ lookup('env', 'NOTIFY_TRIGGERS') | default('run:created,run:completed,run:errored', true) }}"
 
   vars_prompt: []
+
   tasks:
     - name: "Montar lista de triggers"
       set_fact:
         notify_triggers: "{{ notify_triggers_raw.split(',') | map('trim') | list }}"
+
+    - name: "Checar URL quando o destino não é email"
+      assert:
+        that:
+          - notify_destination_type == 'email' or (notify_url | length) > 0
+        fail_msg: "NOTIFY_URL é obrigatório para destination-type {{ notify_destination_type }}"
 
     - name: "Obter workspace por slug (org + nome)"
       uri:
@@ -35,7 +43,7 @@
 
     - name: "Extrair workspace_id"
       set_fact:
-        workspace_id: "{{ (ws_resp.json.data.id) }}"
+        workspace_id: "{{ ws_resp.json.data.id }}"
 
     - name: "Listar notification-configurations do workspace"
       uri:
@@ -54,10 +62,11 @@
           {{
             (list_resp.json.data | default([]))
             | selectattr('attributes.name', 'equalto', notify_name)
+            | selectattr('attributes.destination-type', 'equalto', notify_destination_type)
             | list
           }}
 
-    - name: "Criar notification se não existir"
+    - name: "Criar notification se não existir (POST com type SINGULAR)"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: POST
@@ -67,16 +76,39 @@
         body_format: json
         body:
           data:
-            type: "notification-configurations"
+            type: "notification-configuration"   # SINGULAR no create
             attributes:
               name: "{{ notify_name }}"
               enabled: "{{ notify_enabled }}"
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
+        return_content: true
         status_code: [201]
       register: create_resp
       when: (existing_nc | length) == 0
+
+    - name: "Atualizar notification existente (PATCH com type PLURAL)"
+      uri:
+        url: "{{ api_base }}/notification-configurations/{{ existing_nc[0].id }}"
+        method: PATCH
+        headers:
+          Authorization: "Bearer {{ hcp_token }}"
+          Content-Type: "application/vnd.api+json"
+        body_format: json
+        body:
+          data:
+            id: "{{ existing_nc[0].id }}"
+            type: "notification-configurations"  # PLURAL no update
+            attributes:
+              name: "{{ notify_name }}"
+              enabled: "{{ notify_enabled }}"
+              destination-type: "{{ notify_destination_type }}"
+              url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
+              triggers: "{{ notify_triggers }}"
+        return_content: true
+        status_code: [200]
+      when: (existing_nc | length) > 0
 
     - name: "Usar o ID da notification recém-criada ou existente"
       set_fact:
@@ -85,15 +117,21 @@
             (create_resp.json.data.id if (existing_nc | length) == 0 else existing_nc[0].id)
           }}
 
-    - name: "Opcional: verificar/validar delivery da notification (actions/verify) se enabled"
+    - name: "Opcional: verificar/validar delivery da notification (actions/verify) se enabled e não for email"
       uri:
         url: "{{ api_base }}/notification-configurations/{{ notification_id }}/actions/verify"
         method: POST
         headers:
           Authorization: "Bearer {{ hcp_token }}"
           Content-Type: "application/vnd.api+json"
+        body_format: json
+        body:
+          data:
+            id: "{{ notification_id }}"
+            type: "notification-configurations"
+        return_content: true
         status_code: [200, 400]
-      when: notify_enabled
+      when: notify_enabled and notify_destination_type != 'email'
 
     - name: "Resumo"
       debug:
