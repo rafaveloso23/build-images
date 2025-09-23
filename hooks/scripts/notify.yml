@@ -60,18 +60,23 @@
         status_code: [200]
       register: list_resp
 
-    - name: "Filtrar por nome + destination-type generic"
+    # → Checa EXISTÊNCIA por NOME (independente do tipo)
+    - name: "Filtrar por nome exato"
       set_fact:
         existing_nc: >-
           {{
             (list_resp.json.data | default([]))
             | selectattr('attributes.name', 'equalto', notify_name)
-            | selectattr('attributes.destination-type', 'equalto', 'generic')
             | list
           }}
 
-    # --- CREATE: apenas quando não existir; enabled=true no POST ---
-    - name: "Criar notification generic (enabled=true) se não existir"
+    - name: "Marcar se já existe"
+      set_fact:
+        already_exists: "{{ (existing_nc | length) > 0 }}"
+        notification_id: "{{ (existing_nc[0].id) if (existing_nc | length) > 0 else '' }}"
+
+    # --- CREATE: apenas quando NÃO existir ---
+    - name: "Criar notification generic (enabled=true) se NÃO existir"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: POST
@@ -90,23 +95,23 @@
               url: "{{ notify_url }}"
               triggers: "{{ notify_triggers }}"
         return_content: true
-        status_code: [201, 400]                   # 400 = verify falhou; ok para seu teste
+        status_code: [201, 400]                   # 400 = verify falhou; ok pro seu teste
       register: create_resp
       failed_when: false
-      when: (existing_nc | length) == 0
+      when: not already_exists
 
-    - name: "Definir notification_id (novo ou existente)"
+    - name: "Definir notification_id quando acabou de criar (se tiver)"
       set_fact:
-        notification_id: "{{ (create_resp.json.data.id if (existing_nc | length) == 0 else existing_nc[0].id) | default('unknown') }}"
-      when: create_resp is defined or (existing_nc | length) > 0
+        notification_id: "{{ create_resp.json.data.id | default(notification_id | default('')) }}"
+      when: not already_exists
 
     - name: "Resumo"
       debug:
         msg:
           - "workspace_id={{ workspace_id }}"
-          - "notification_id={{ notification_id }}"
-          - "name={{ notify_name }}"
-          - "destination-type=generic"
-          - "created_now={{ (existing_nc | length) == 0 }}"
+          - "notification_name={{ notify_name }}"
+          - "already_exists={{ already_exists }}"
+          - "notification_id={{ notification_id | default('unknown') }}"
+          - "created_now={{ (not already_exists) }}"
           - "post_status={{ create_resp.status | default('skipped') }}"
-          - "note=se post_status=400, o create falhou por verify; como seu objetivo é só testar a chamada, o play não falha"
+          - "obs=se post_status=400, o create falhou por verify; como seu objetivo é só testar a criação, o play não falha"
