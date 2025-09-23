@@ -2,7 +2,7 @@ FROM hashicorp/tfc-agent:latest
 
 USER root
 
-# Dependências mínimas p/ Ansible e utilitários úteis
+## Dependências mínimas p/ Ansible e utilitários úteis
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       python3 python3-pip ca-certificates jq sudo \
