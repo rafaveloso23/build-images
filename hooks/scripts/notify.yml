@@ -66,21 +66,21 @@
             | list
           }}
 
-    # ---------- CREATE (sempre disabled) ----------
-    - name: "Criar notification se não existir (POST com type SINGULAR, enabled=false)"
+    - name: "Criar notification se não existir (POST com type PLURAL)"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: POST
         headers:
           Authorization: "Bearer {{ hcp_token }}"
           Content-Type: "application/vnd.api+json"
+          Accept: "application/vnd.api+json"
         body_format: json
         body:
           data:
-            type: "notification-configuration"   # <- SINGULAR (doc)
+            type: "notification-configurations"    # <--- PLURAL no CREATE
             attributes:
               name: "{{ notify_name }}"
-              enabled: false                      # <- cria sempre desabilitada
+              enabled: false                       # cria desabilitada; depois fazemos PATCH
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
@@ -88,6 +88,7 @@
         status_code: [201]
       register: create_resp
       when: (existing_nc | length) == 0
+
 
     - name: "Definir notification_id (novo ou existente)"
       set_fact:
