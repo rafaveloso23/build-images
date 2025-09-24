@@ -65,7 +65,6 @@
             | list
           }}
 
-    # >>> AQUI: type SINGULAR e enabled boolean sem aspas <<<
     - name: "Criar notification se não existir"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
@@ -77,15 +76,15 @@
         body_format: json
         body:
           data:
-            type: "notification-configuration"
+            type: "notification-configuration"   # <<-- SINGULAR
             attributes:
               name: "{{ notify_name }}"
-              enabled: {{ notify_enabled }}
+              enabled: "{{ (notify_enabled | bool) | to_json | from_json }}"   # <<-- booleano real
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
         return_content: true
-        status_code: [201, 400, 422]  # 400 = verify falhou; 422 = corpo inválido (mostra erro)
+        status_code: [201, 400, 422]
       register: create_resp
       failed_when: false
       when: (existing_nc | length) == 0
