@@ -12,7 +12,7 @@
     ws_name: "{{ lookup('env','TFC_WORKSPACE_NAME') }}"
     workspace_notification_enabled: "{{ (lookup('env','WORKSPACE_NOTIFICATION_ENABLED') or 'false') | bool }}"
 
-    # Matriz de notifications (JSON) - obrigatória quando enabled=true
+    # Matriz de notifications (JSON em uma linha) - obrigatória quando enabled=true
     notify_configs_json: "{{ lookup('env','NOTIFY_CONFIGS_JSON') | default('[]', true) }}"
     default_triggers: ["run:created","run:completed","run:errored"]
 
@@ -25,113 +25,49 @@
       set_fact:
         notify_matrix: "{{ notify_configs_json | from_json }}"
 
-    - name: "Validar matriz"
+    # Unicidade por PAR (name, destination_type) dentro da matriz
+    - name: "Validar matriz (não-vazia, chaves únicas por name+destination_type)"
       assert:
         that:
           - notify_matrix is iterable
           - notify_matrix | length > 0
-          - notify_matrix | map(attribute='name') | list | length == (notify_matrix | map(attribute='name') | list | unique | length)
-        fail_msg: "NOTIFY_CONFIGS_JSON inválido: precisa ser array não-vazio, com 'name' únicos."
+          - >
+            (
+              notify_matrix
+              | map('combine', {'destination_type':'generic'}, true)
+              | map('extract', {'k': ''})
+              | list
+            ) is not defined
+        fail_msg: "Validação falhou."
+      vars:
+        # cria uma lista de chaves 'name|destination_type' normalizada
+        keys: >-
+          {{
+            notify_matrix
+            | map('combine', {'destination_type':'generic'}, true)
+            | map('regex_replace', '^$', '')  # no-op p/ evitar bug de filtro vazio
+          }}
+      # Nota: a checagem acima é placeholder; vamos fazer a checagem de unicidade explicitamente abaixo.
 
-    - name: "Normalizar entradas (defaults e validações leves)"
+    # Checagem explícita de unicidade (name|destination_type)
+    - name: "Checar unicidade (name + destination_type)"
+      vars:
+        keys: >-
+          {{
+            notify_matrix
+            | map('combine', {'destination_type':'generic'}, true)
+            | map('community.general.json_query', '{k: join(`|`, [name, destination_type])}')
+            | map(attribute='k') | list
+          }}
+      assert:
+        that:
+          - keys | length == (keys | unique | length)
+        fail_msg: "NOTIFY_CONFIGS_JSON inválido: cada par (name, destination_type) deve ser único."
+
+    - name: "Normalizar entradas (defaults)"
       set_fact:
         notify_matrix_norm: >-
           {{
             notify_matrix
-            | map('combine', {'destination_type':'generic'}, True)           # default type
-            | map('combine', {'triggers': default_triggers}, True)           # default triggers
-            | list
-          }}
-
-    - name: "Checar URLs obrigatórias (para tipos com URL)"
-      assert:
-        that:
-          - notify_matrix_norm | selectattr('destination_type','in',['generic','slack','microsoft-teams'])
-                                 | selectattr('url','defined')
-                                 | map(attribute='url') | reject('equalto','') | list | length
-            == (notify_matrix_norm | selectattr('destination_type','in',['generic','slack','microsoft-teams']) | list | length)
-        fail_msg: "Todas entradas com destination_type generic/slack/microsoft-teams precisam de 'url'."
-
-    - name: "Obter workspace (org + nome)"
-      uri:
-        url: "{{ api_base }}/organizations/{{ hcp_org }}/workspaces/{{ ws_name }}"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ hcp_token }}"
-          Content-Type: "application/vnd.api+json"
-        return_content: true
-        status_code: [200]
-      register: ws_resp
-
-    - name: "workspace_id"
-      set_fact:
-        workspace_id: "{{ ws_resp.json.data.id }}"
-        current_tags: "{{ ws_resp.json.data.attributes['tag-names'] | default([]) }}"
-
-    - name: "Listar notifications existentes no workspace"
-      uri:
-        url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ hcp_token }}"
-          Content-Type: "application/vnd.api+json"
-        return_content: true
-        status_code: [200]
-      register: list_resp
-
-    - name: "Mapear existentes por (name,destination-type)"
-      set_fact:
-        existing_by_key: >-
-          {{
-            dict(
-              (item.attributes.name ~ '|' ~ item.attributes['destination-type'], item)
-              for item in (list_resp.json.data | default([]))
-            )
-          }}
-
-    - name: "Checar limite de 20 notifications"
-      assert:
-        that:
-          - ( (list_resp.json.data | length) + (notify_matrix_norm | length)
-              - (notify_matrix_norm
-                 | selectattr('name','in', (list_resp.json.data | map(attribute='attributes') | map(attribute='name') | list))
-                 | list
-                | length)
-            ) <= 20
-        fail_msg: "Somando as novas entradas ultrapassa o limite de 20 notifications por workspace."
-
-    - name: "Criar apenas o que não existe"
-      loop: "{{ notify_matrix_norm }}"
-      loop_control:
-        loop_var: n
-      when: existing_by_key.get(n.name ~ '|' ~ n.destination_type, None) is not defined
-      uri:
-        url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ hcp_token }}"
-          Content-Type: "application/vnd.api+json"
-          Accept: "application/vnd.api+json"
-        body_format: json
-        body:
-          data:
-            type: "notification-configurations"
-            attributes:
-              name: "{{ n.name }}"
-              enabled: true                        # cria habilitada (de propósito)
-              destination-type: "{{ n.destination_type }}"
-              url: "{{ n.url if n.destination_type in ['generic','slack','microsoft-teams'] else omit }}"
-              triggers: "{{ n.triggers | default(default_triggers) }}"
-        return_content: true
-        status_code: [201, 400]                    # 400 = verify falhou; ok pro teu objetivo
-      register: create_results
-      failed_when: false
-
-    - name: "Resumo"
-      debug:
-        msg:
-          - "workspace_id={{ workspace_id }}"
-          - "existing_count={{ (list_resp.json.data | length) }}"
-          - "created_count={{ (create_results.results | default([]) | selectattr('status','equalto',201) | list | length) }}"
-          - "skipped_existing={{ (notify_matrix_norm | length) - (create_results.results | default([]) | length) }}"
-          - "notes: POST 400 = verify falhou; não falhamos o run porque o objetivo é só garantir criação."
+            | map('combine', {'destination_type':'generic'}, True)
+            | map('combine', {'triggers': default_trigg_
