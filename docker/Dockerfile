@@ -16,7 +16,7 @@ RUN echo 'tfc-agent ALL=NOPASSWD: /usr/bin/apt-get , /usr/bin/apt' > /etc/sudoer
 RUN mkdir -p /home/tfc-agent/.tfc-agent/hooks/scripts
 ADD --chown=tfc-agent:tfc-agent hooks/ /home/tfc-agent/.tfc-agent/hooks/
 RUN chmod +x /home/tfc-agent/.tfc-agent/hooks/terraform-pre-plan \
-    && chmod +x /home/tfc-agent/.tfc-agent/hooks/scripts/pre-plan.sh
+    && chmod +x /home/tfc-agent/.tfc-agent/hooks/scripts/pre-plan-simples.sh
 
 # Verificação opcional (falha cedo se faltar algo)
 RUN ansible --version && ansible-playbook --version
