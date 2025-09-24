@@ -44,28 +44,8 @@
       set_fact:
         workspace_id: "{{ ws_resp.json.data.id }}"
 
-    - name: "Listar notifications do workspace"
-      uri:
-        url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ hcp_token }}"
-          Content-Type: "application/vnd.api+json"
-        return_content: true
-        status_code: [200]
-      register: list_resp
-
-    - name: "Ver se já existe (mesmo nome + tipo)"
-      set_fact:
-        existing_nc: >-
-          {{
-            (list_resp.json.data | default([]))
-            | selectattr('attributes.name', 'equalto', notify_name)
-            | selectattr('attributes.destination-type', 'equalto', notify_destination_type)
-            | list
-          }}
-
-    - name: "Criar notification se não existir"
+    # >>> POST direto, sem checar se já existe <<<
+    - name: "Criar notification (sem pré-checagem)"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: POST
@@ -76,37 +56,27 @@
         body_format: json
         body:
           data:
-            type: "notification-configuration"   # <<-- SINGULAR
+            type: "notification-configuration"   # SINGULAR (correto para create)
             attributes:
               name: "{{ notify_name }}"
-              enabled: "{{ (notify_enabled | bool) | to_json | from_json }}"   # <<-- booleano real
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
+              # envia booleano real, evitando string "True"/"False"
+              enabled: "{{ (notify_enabled | bool) | to_json | from_json }}"
         return_content: true
-        status_code: [201, 400, 422]
+        # Aceita 201 (criado) e também 400/409/422/500 para não travar o run
+        status_code: [201, 400, 409, 422, 500]
       register: create_resp
       failed_when: false
-      when: (existing_nc | length) == 0
-
-    - name: "Definir notification_id (novo ou existente)"
-      set_fact:
-        notification_id: >-
-          {{
-            (create_resp.json.data.id
-             if ((existing_nc | length) == 0 and (create_resp.status|default(0)) == 201)
-             else (existing_nc[0].id if (existing_nc | length) > 0 else 'unknown'))
-          }}
 
     - name: "Resumo"
       debug:
         msg:
           - "workspace_id={{ workspace_id }}"
-          - "notification_id={{ notification_id }}"
           - "name={{ notify_name }}"
           - "destination-type={{ notify_destination_type }}"
           - "enabled_requested={{ notify_enabled }}"
           - "triggers={{ notify_triggers }}"
-          - "already_existed={{ (existing_nc | length) > 0 }}"
-          - "post_status={{ create_resp.status | default('skipped') }}"
+          - "post_status={{ create_resp.status | default('n/a') }}"
           - "post_errors={{ create_resp.json.errors | default([]) }}"
