@@ -1,0 +1,108 @@
+---
+- name: "Configurar UMA notification (simples) - pre-plan"
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    api_base: "https://app.terraform.io/api/v2"
+
+    # Lidas do ambiente (exportadas no pre-plan-simples)
+    hcp_org: "{{ lookup('env','HCP_ORG') }}"
+    hcp_token: "{{ lookup('env','HCP_TF_TOKEN') }}"
+    ws_name: "{{ lookup('env','TFC_WORKSPACE_NAME') }}"
+
+    notify_name: "{{ lookup('env','NOTIFY_NAME') | default('Generic webhook', true) }}"
+    notify_destination_type: "{{ lookup('env','NOTIFY_DESTINATION_TYPE') | default('generic', true) }}"
+    notify_url: "{{ lookup('env','NOTIFY_URL') | default('', true) }}"
+    notify_triggers_raw: "{{ lookup('env','NOTIFY_TRIGGERS') | default('run:created,run:completed,run:errored', true) }}"
+    notify_enabled_str: "{{ lookup('env','NOTIFY_ENABLED') | default('true', true) }}"
+
+  tasks:
+    - name: "Normalizar enabled e triggers"
+      set_fact:
+        notify_enabled: "{{ (notify_enabled_str | lower) in ['1','true','yes','on'] }}"
+        notify_triggers: "{{ notify_triggers_raw.split(',') | map('trim') | list }}"
+
+    - name: "Checar URL quando o destino exige URL (generic/slack/teams)"
+      assert:
+        that:
+          - notify_destination_type in ['email'] or (notify_url | length) > 0
+        fail_msg: "NOTIFY_URL é obrigatório para destination-type {{ notify_destination_type }}"
+
+    - name: "Obter workspace (org + nome)"
+      uri:
+        url: "{{ api_base }}/organizations/{{ hcp_org }}/workspaces/{{ ws_name }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ hcp_token }}"
+          Content-Type: "application/vnd.api+json"
+        return_content: true
+        status_code: [200]
+      register: ws_resp
+
+    - name: "Extrair workspace_id"
+      set_fact:
+        workspace_id: "{{ ws_resp.json.data.id }}"
+
+    - name: "Listar notifications do workspace"
+      uri:
+        url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ hcp_token }}"
+          Content-Type: "application/vnd.api+json"
+        return_content: true
+        status_code: [200]
+      register: list_resp
+
+    - name: "Ver se já existe (mesmo nome + tipo)"
+      set_fact:
+        existing_nc: >-
+          {{
+            (list_resp.json.data | default([]))
+            | selectattr('attributes.name', 'equalto', notify_name)
+            | selectattr('attributes.destination-type', 'equalto', notify_destination_type)
+            | list
+          }}
+
+    # Cria só se NÃO existir. Se enabled=true e o verify automático falhar, TFC pode devolver 400.
+    # Aceitamos [201, 400] e não falhamos o run (ajuste se quiser comportamento mais estrito).
+    - name: "Criar notification se não existir"
+      uri:
+        url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ hcp_token }}"
+          Content-Type: "application/vnd.api+json"
+          Accept: "application/vnd.api+json"
+        body_format: json
+        body:
+          data:
+            type: "notification-configurations"
+            attributes:
+              name: "{{ notify_name }}"
+              enabled: "{{ notify_enabled }}"
+              destination-type: "{{ notify_destination_type }}"
+              url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
+              triggers: "{{ notify_triggers }}"
+        return_content: true
+        status_code: [201, 400]
+      register: create_resp
+      failed_when: false
+      when: (existing_nc | length) == 0
+
+    - name: "Definir notification_id (novo ou existente)"
+      set_fact:
+        notification_id: "{{ (create_resp.json.data.id if (existing_nc | length) == 0 else existing_nc[0].id) | default('unknown') }}"
+
+    - name: "Resumo"
+      debug:
+        msg:
+          - "workspace_id={{ workspace_id }}"
+          - "notification_id={{ notification_id }}"
+          - "name={{ notify_name }}"
+          - "destination-type={{ notify_destination_type }}"
+          - "enabled_requested={{ notify_enabled }}"
+          - "triggers={{ notify_triggers }}"
+          - "created_now={{ (existing_nc | length) == 0 }}"
+          - "post_status={{ create_resp.status | default('skipped') }}"

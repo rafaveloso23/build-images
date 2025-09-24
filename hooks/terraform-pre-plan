@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Log simples
-echo "[pre-plan] iniciando hook de configuração de notification via Ansible..."
+echo "[pre-plan-simples] iniciando hook de configuração de notification via Ansible..."
 
 # Encaminha para um script separado (fica mais legível e testável)
-exec /home/tfc-agent/.tfc-agent/hooks/scripts/pre-plan.sh
+exec /home/tfc-agent/.tfc-agent/hooks/scripts/pre-plan-simples.sh
