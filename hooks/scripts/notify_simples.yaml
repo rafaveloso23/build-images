@@ -46,8 +46,27 @@
       set_fact:
         workspace_id: "{{ ws_resp.json.data.id }}"
 
-    # POST direto, sem checar se já existe
-    - name: "Criar notification (POST nested)"
+    - name: "Listar notifications do workspace"
+      uri:
+        url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ hcp_token }}"
+          Content-Type: "application/vnd.api+json"
+        return_content: true
+        status_code: [200]
+      register: list_resp
+
+    - name: "Filtrar existentes pelo mesmo NOME"
+      set_fact:
+        existing_by_name: >-
+          {{
+            (list_resp.json.data | default([]))
+            | selectattr('attributes.name','equalto', notify_name)
+            | list
+          }}
+
+    - name: "Criar notification (só se NÃO existir com esse nome)"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: POST
@@ -58,7 +77,7 @@
         body_format: json
         body:
           data:
-            type: "notification-configuration"   # SINGULAR (correto para create)
+            type: "notification-configuration"
             attributes:
               destination-type: "{{ notify_destination_type }}"
               name: "{{ notify_name }}"
@@ -70,15 +89,23 @@
         status_code: [200, 201, 400, 409, 422, 500]
       register: create_resp
       failed_when: false
+      when: (existing_by_name | length) == 0
+
+    - name: "Definir notification_id (novo ou existente)"
+      set_fact:
+        notification_id: >-
+          {{
+            (create_resp.json.data.id
+              if ((existing_by_name | length) == 0 and (create_resp.status | default(0)) in [200,201])
+              else (existing_by_name[0].id if (existing_by_name | length) > 0 else 'unknown'))
+          }}
 
     - name: "Resumo"
       debug:
         msg:
           - "workspace_id={{ workspace_id }}"
           - "name={{ notify_name }}"
-          - "destination-type={{ notify_destination_type }}"
-          - "enabled_payload={{ notify_enabled }}"
-          - "triggers={{ notify_triggers }}"
-          - "post_status={{ create_resp.status | default('n/a') }}"
-          - "notification_id={{ create_resp.json.data.id | default('unknown') }}"
-          - "post_errors={{ create_resp.json.errors | default([]) }}"
+          - "already_existed={{ (existing_by_name | length) > 0 }}"
+          - "post_status={{ create_resp.status | default('skipped') }}"
+          - "notification_id={{ notification_id }}"
+          - "errors={{ create_resp.json.errors | default([]) }}"
