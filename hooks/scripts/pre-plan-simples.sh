@@ -12,7 +12,7 @@ TFC_WORKSPACE_NAME="${TFC_WORKSPACE_NAME:-seu-workspace}"
 NOTIFY_NAME="${NOTIFY_NAME:-Generic webhook}"
 NOTIFY_DESTINATION_TYPE="${NOTIFY_DESTINATION_TYPE:-generic}"   # generic | slack | microsoft-teams | email
 NOTIFY_URL="${NOTIFY_URL:-https://httpstat.us/200}"             # obrigatório p/ generic/slack/teams
-NOTIFY_ENABLED="${NOTIFY_ENABLED:-true}"                        # true/false
+WORKSPACE_NOTIFICATION_ENABLED="${WORKSPACE_NOTIFICATION_ENABLED:-true}"                        # true/false
 NOTIFY_TRIGGERS="${NOTIFY_TRIGGERS:-run:created,run:completed,run:errored}"
 
 # (opcional) exigir algumas vars:
@@ -20,7 +20,7 @@ NOTIFY_TRIGGERS="${NOTIFY_TRIGGERS:-run:created,run:completed,run:errored}"
 # : "${NOTIFY_URL:?defina NOTIFY_URL no Variable Set}"
 
 export HCP_ORG HCP_TF_TOKEN TFC_WORKSPACE_NAME \
-       NOTIFY_NAME NOTIFY_DESTINATION_TYPE NOTIFY_URL NOTIFY_ENABLED NOTIFY_TRIGGERS
+       NOTIFY_NAME NOTIFY_DESTINATION_TYPE NOTIFY_URL WORKSPACE_NOTIFICATION_ENABLED NOTIFY_TRIGGERS
 
 ansible-playbook -i /home/tfc-agent/.tfc-agent/hooks/scripts/hosts.ini \
   /home/tfc-agent/.tfc-agent/hooks/notify_simples.yaml -v

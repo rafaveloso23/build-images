@@ -6,7 +6,7 @@
   vars:
     api_base: "https://app.terraform.io/api/v2"
 
-    # Lidas do ambiente (exportadas no pre-plan-simples)
+    # Lidas do ambiente (exportadas pelo pre-plan-simples)
     hcp_org: "{{ lookup('env','HCP_ORG') }}"
     hcp_token: "{{ lookup('env','HCP_TF_TOKEN') }}"
     ws_name: "{{ lookup('env','TFC_WORKSPACE_NAME') }}"
@@ -15,7 +15,8 @@
     notify_destination_type: "{{ lookup('env','NOTIFY_DESTINATION_TYPE') | default('generic', true) }}"
     notify_url: "{{ lookup('env','NOTIFY_URL') | default('', true) }}"
     notify_triggers_raw: "{{ lookup('env','NOTIFY_TRIGGERS') | default('run:created,run:completed,run:errored', true) }}"
-    notify_enabled_str: "{{ lookup('env','NOTIFY_ENABLED') | default('true', true) }}"
+    # novo: usa WORKSPACE_NOTIFICATION_ENABLED
+    notify_enabled_str: "{{ lookup('env','WORKSPACE_NOTIFICATION_ENABLED') | default('true', true) }}"
 
   tasks:
     - name: "Normalizar enabled e triggers"
@@ -65,8 +66,7 @@
             | list
           }}
 
-    # Cria só se NÃO existir. Se enabled=true e o verify automático falhar, TFC pode devolver 400.
-    # Aceitamos [201, 400] e não falhamos o run (ajuste se quiser comportamento mais estrito).
+    # Cria só se NÃO existir. Aceita 201/400 (verify do webhook pode falhar).
     - name: "Criar notification se não existir"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
