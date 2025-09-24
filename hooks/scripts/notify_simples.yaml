@@ -15,7 +15,6 @@
     notify_destination_type: "{{ lookup('env','NOTIFY_DESTINATION_TYPE') | default('generic', true) }}"
     notify_url: "{{ lookup('env','NOTIFY_URL') | default('', true) }}"
     notify_triggers_raw: "{{ lookup('env','NOTIFY_TRIGGERS') | default('run:created,run:completed,run:errored', true) }}"
-    # novo: usa WORKSPACE_NOTIFICATION_ENABLED
     notify_enabled_str: "{{ lookup('env','WORKSPACE_NOTIFICATION_ENABLED') | default('true', true) }}"
 
   tasks:
@@ -66,7 +65,7 @@
             | list
           }}
 
-    # Cria só se NÃO existir. Aceita 201/400 (verify do webhook pode falhar).
+    # >>> AQUI: type SINGULAR e enabled boolean sem aspas <<<
     - name: "Criar notification se não existir"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
@@ -78,22 +77,27 @@
         body_format: json
         body:
           data:
-            type: "notification-configurations"
+            type: "notification-configuration"
             attributes:
               name: "{{ notify_name }}"
-              enabled: "{{ notify_enabled }}"
+              enabled: {{ notify_enabled }}
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
         return_content: true
-        status_code: [201, 400]
+        status_code: [201, 400, 422]  # 400 = verify falhou; 422 = corpo inválido (mostra erro)
       register: create_resp
       failed_when: false
       when: (existing_nc | length) == 0
 
     - name: "Definir notification_id (novo ou existente)"
       set_fact:
-        notification_id: "{{ (create_resp.json.data.id if (existing_nc | length) == 0 else existing_nc[0].id) | default('unknown') }}"
+        notification_id: >-
+          {{
+            (create_resp.json.data.id
+             if ((existing_nc | length) == 0 and (create_resp.status|default(0)) == 201)
+             else (existing_nc[0].id if (existing_nc | length) > 0 else 'unknown'))
+          }}
 
     - name: "Resumo"
       debug:
@@ -104,5 +108,6 @@
           - "destination-type={{ notify_destination_type }}"
           - "enabled_requested={{ notify_enabled }}"
           - "triggers={{ notify_triggers }}"
-          - "created_now={{ (existing_nc | length) == 0 }}"
+          - "already_existed={{ (existing_nc | length) > 0 }}"
           - "post_status={{ create_resp.status | default('skipped') }}"
+          - "post_errors={{ create_resp.json.errors | default([]) }}"
