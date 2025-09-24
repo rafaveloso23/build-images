@@ -1,38 +1,56 @@
 ---
-- name: "Configurar notification no HCP Terraform (pre-plan)"
+- name: "Configurar notifications (dinâmico por matriz) - pre-plan"
   hosts: localhost
   gather_facts: false
 
   vars:
     api_base: "https://app.terraform.io/api/v2"
 
-    # Environment (Variable Set / pre-plan.sh)
-    hcp_org: "{{ lookup('env', 'HCP_ORG') }}"
-    hcp_token: "{{ lookup('env', 'HCP_TF_TOKEN') }}"
-    ws_name: "{{ lookup('env', 'TFC_WORKSPACE_NAME') }}"
+    # Ambientes
+    hcp_org: "{{ lookup('env','HCP_ORG') }}"
+    hcp_token: "{{ lookup('env','HCP_TF_TOKEN') }}"
+    ws_name: "{{ lookup('env','TFC_WORKSPACE_NAME') }}"
+    workspace_notification_enabled: "{{ (lookup('env','WORKSPACE_NOTIFICATION_ENABLED') or 'false') | bool }}"
 
-    # Só cria quando esta flag estiver true (aceita WORKSPACE_NOTIFICATION_ENABLED ou workspace_notification_enabled)
-    workspace_notification_enabled: "{{ (lookup('env','WORKSPACE_NOTIFICATION_ENABLED') or lookup('env','workspace_notification_enabled') or 'false') | bool }}"
-
-    # Parâmetros da notification (sempre generic)
-    notify_name: "{{ lookup('env', 'NOTIFY_NAME') | default('Generic webhook', true) }}"
-    notify_url: "{{ lookup('env', 'NOTIFY_URL') | default('', true) }}"
-    notify_triggers_raw: "{{ lookup('env', 'NOTIFY_TRIGGERS') | default('run:created,run:completed,run:errored', true) }}"
+    # Matriz de notifications (JSON) - obrigatória quando enabled=true
+    notify_configs_json: "{{ lookup('env','NOTIFY_CONFIGS_JSON') | default('[]', true) }}"
+    default_triggers: ["run:created","run:completed","run:errored"]
 
   tasks:
     - name: "Encerrar cedo se a flag não estiver habilitada"
       meta: end_play
       when: not workspace_notification_enabled
 
-    - name: "Montar lista de triggers"
+    - name: "Parse da matriz JSON"
       set_fact:
-        notify_triggers: "{{ notify_triggers_raw.split(',') | map('trim') | list }}"
+        notify_matrix: "{{ notify_configs_json | from_json }}"
 
-    - name: "Checar URL (obrigatória para generic)"
+    - name: "Validar matriz"
       assert:
         that:
-          - (notify_url | length) > 0
-        fail_msg: "NOTIFY_URL é obrigatório para destination-type generic"
+          - notify_matrix is iterable
+          - notify_matrix | length > 0
+          - notify_matrix | map(attribute='name') | list | length == (notify_matrix | map(attribute='name') | list | unique | length)
+        fail_msg: "NOTIFY_CONFIGS_JSON inválido: precisa ser array não-vazio, com 'name' únicos."
+
+    - name: "Normalizar entradas (defaults e validações leves)"
+      set_fact:
+        notify_matrix_norm: >-
+          {{
+            notify_matrix
+            | map('combine', {'destination_type':'generic'}, True)           # default type
+            | map('combine', {'triggers': default_triggers}, True)           # default triggers
+            | list
+          }}
+
+    - name: "Checar URLs obrigatórias (para tipos com URL)"
+      assert:
+        that:
+          - notify_matrix_norm | selectattr('destination_type','in',['generic','slack','microsoft-teams'])
+                                 | selectattr('url','defined')
+                                 | map(attribute='url') | reject('equalto','') | list | length
+            == (notify_matrix_norm | selectattr('destination_type','in',['generic','slack','microsoft-teams']) | list | length)
+        fail_msg: "Todas entradas com destination_type generic/slack/microsoft-teams precisam de 'url'."
 
     - name: "Obter workspace (org + nome)"
       uri:
@@ -45,11 +63,12 @@
         status_code: [200]
       register: ws_resp
 
-    - name: "Extrair workspace_id"
+    - name: "workspace_id"
       set_fact:
         workspace_id: "{{ ws_resp.json.data.id }}"
+        current_tags: "{{ ws_resp.json.data.attributes['tag-names'] | default([]) }}"
 
-    - name: "Listar notification-configurations do workspace"
+    - name: "Listar notifications existentes no workspace"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: GET
@@ -60,23 +79,32 @@
         status_code: [200]
       register: list_resp
 
-    # → Checa EXISTÊNCIA por NOME (independente do tipo)
-    - name: "Filtrar por nome exato"
+    - name: "Mapear existentes por (name,destination-type)"
       set_fact:
-        existing_nc: >-
+        existing_by_key: >-
           {{
-            (list_resp.json.data | default([]))
-            | selectattr('attributes.name', 'equalto', notify_name)
-            | list
+            dict(
+              (item.attributes.name ~ '|' ~ item.attributes['destination-type'], item)
+              for item in (list_resp.json.data | default([]))
+            )
           }}
 
-    - name: "Marcar se já existe"
-      set_fact:
-        already_exists: "{{ (existing_nc | length) > 0 }}"
-        notification_id: "{{ (existing_nc[0].id) if (existing_nc | length) > 0 else '' }}"
+    - name: "Checar limite de 20 notifications"
+      assert:
+        that:
+          - ( (list_resp.json.data | length) + (notify_matrix_norm | length)
+              - (notify_matrix_norm
+                 | selectattr('name','in', (list_resp.json.data | map(attribute='attributes') | map(attribute='name') | list))
+                 | list
+                | length)
+            ) <= 20
+        fail_msg: "Somando as novas entradas ultrapassa o limite de 20 notifications por workspace."
 
-    # --- CREATE: apenas quando NÃO existir ---
-    - name: "Criar notification generic (enabled=true) se NÃO existir"
+    - name: "Criar apenas o que não existe"
+      loop: "{{ notify_matrix_norm }}"
+      loop_control:
+        loop_var: n
+      when: existing_by_key.get(n.name ~ '|' ~ n.destination_type, None) is not defined
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: POST
@@ -87,31 +115,23 @@
         body_format: json
         body:
           data:
-            type: "notification-configurations"   # PLURAL no create
+            type: "notification-configurations"
             attributes:
-              name: "{{ notify_name }}"
-              enabled: true                       # cria já habilitada
-              destination-type: "generic"
-              url: "{{ notify_url }}"
-              triggers: "{{ notify_triggers }}"
+              name: "{{ n.name }}"
+              enabled: true                        # cria habilitada (de propósito)
+              destination-type: "{{ n.destination_type }}"
+              url: "{{ n.url if n.destination_type in ['generic','slack','microsoft-teams'] else omit }}"
+              triggers: "{{ n.triggers | default(default_triggers) }}"
         return_content: true
-        status_code: [201, 400]                   # 400 = verify falhou; ok pro seu teste
-      register: create_resp
+        status_code: [201, 400]                    # 400 = verify falhou; ok pro teu objetivo
+      register: create_results
       failed_when: false
-      when: not already_exists
-
-    - name: "Definir notification_id quando acabou de criar (se tiver)"
-      set_fact:
-        notification_id: "{{ create_resp.json.data.id | default(notification_id | default('')) }}"
-      when: not already_exists
 
     - name: "Resumo"
       debug:
         msg:
           - "workspace_id={{ workspace_id }}"
-          - "notification_name={{ notify_name }}"
-          - "already_exists={{ already_exists }}"
-          - "notification_id={{ notification_id | default('unknown') }}"
-          - "created_now={{ (not already_exists) }}"
-          - "post_status={{ create_resp.status | default('skipped') }}"
-          - "obs=se post_status=400, o create falhou por verify; como seu objetivo é só testar a criação, o play não falha"
+          - "existing_count={{ (list_resp.json.data | length) }}"
+          - "created_count={{ (create_results.results | default([]) | selectattr('status','equalto',201) | list | length) }}"
+          - "skipped_existing={{ (notify_matrix_norm | length) - (create_results.results | default([]) | length) }}"
+          - "notes: POST 400 = verify falhou; não falhamos o run porque o objetivo é só garantir criação."
