@@ -23,4 +23,4 @@ export HCP_ORG HCP_TF_TOKEN TFC_WORKSPACE_NAME \
        NOTIFY_NAME NOTIFY_DESTINATION_TYPE NOTIFY_URL WORKSPACE_NOTIFICATION_ENABLED NOTIFY_TRIGGERS
 
 ansible-playbook -i /home/tfc-agent/.tfc-agent/hooks/scripts/hosts.ini \
-  /home/tfc-agent/.tfc-agent/hooks/notify_simples.yaml -v
+  /home/tfc-agent/.tfc-agent/hooks/scripts/notify_simples.yaml -v
