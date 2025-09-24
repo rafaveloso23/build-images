@@ -6,7 +6,7 @@
   vars:
     api_base: "https://app.terraform.io/api/v2"
 
-    # Lidas do ambiente (exportadas pelo pre-plan-simples)
+    # Ambiente
     hcp_org: "{{ lookup('env','HCP_ORG') }}"
     hcp_token: "{{ lookup('env','HCP_TF_TOKEN') }}"
     ws_name: "{{ lookup('env','TFC_WORKSPACE_NAME') }}"
@@ -44,8 +44,8 @@
       set_fact:
         workspace_id: "{{ ws_resp.json.data.id }}"
 
-    # >>> POST direto, sem checar se já existe <<<
-    - name: "Criar notification (sem pré-checagem)"
+    # Tentativa 1: endpoint aninhado (type SINGULAR)
+    - name: "Criar notification (POST nested)"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
         method: POST
@@ -56,19 +56,47 @@
         body_format: json
         body:
           data:
-            type: "notification-configuration"   # SINGULAR (correto para create)
+            type: "notification-configuration"    # SINGULAR
             attributes:
               name: "{{ notify_name }}"
               destination-type: "{{ notify_destination_type }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
-              # envia booleano real, evitando string "True"/"False"
               enabled: "{{ (notify_enabled | bool) | to_json | from_json }}"
         return_content: true
-        # Aceita 201 (criado) e também 400/409/422/500 para não travar o run
-        status_code: [201, 400, 409, 422, 500]
-      register: create_resp
+        status_code: [200, 201, 400, 409, 422, 500]
+      register: create_nested
       failed_when: false
+
+    # Fallback: endpoint global (type PLURAL + relationships.workspace)
+    - name: "Criar notification (POST global) - fallback quando 500 no nested"
+      uri:
+        url: "{{ api_base }}/notification-configurations"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ hcp_token }}"
+          Content-Type: "application/vnd.api+json"
+          Accept: "application/vnd.api+json"
+        body_format: json
+        body:
+          data:
+            type: "notification-configurations"   # PLURAL no endpoint global
+            attributes:
+              name: "{{ notify_name }}"
+              destination-type: "{{ notify_destination_type }}"
+              url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
+              triggers: "{{ notify_triggers }}"
+              enabled: "{{ (notify_enabled | bool) | to_json | from_json }}"
+            relationships:
+              workspace:
+                data:
+                  type: "workspaces"
+                  id: "{{ workspace_id }}"
+        return_content: true
+        status_code: [200, 201, 400, 409, 422, 500]
+      register: create_global
+      failed_when: false
+      when: (create_nested.status | default(0)) == 500
 
     - name: "Resumo"
       debug:
@@ -78,5 +106,9 @@
           - "destination-type={{ notify_destination_type }}"
           - "enabled_requested={{ notify_enabled }}"
           - "triggers={{ notify_triggers }}"
-          - "post_status={{ create_resp.status | default('n/a') }}"
-          - "post_errors={{ create_resp.json.errors | default([]) }}"
+          - "nested_status={{ create_nested.status | default('n/a') }}"
+          - "nested_x_request_id={{ create_nested.x_request_id | default('n/a') }}"
+          - "global_status={{ create_global.status | default('skipped') }}"
+          - "global_x_request_id={{ create_global.x_request_id | default('n/a') }}"
+          - "errors_nested={{ create_nested.json.errors | default([]) }}"
+          - "errors_global={{ create_global.json.errors | default([]) }}"
