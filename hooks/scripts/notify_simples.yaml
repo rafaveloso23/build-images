@@ -6,16 +6,18 @@
   vars:
     api_base: "https://app.terraform.io/api/v2"
 
-    # Ambiente
+    # Lidas do ambiente (exportadas pelo pre-plan-simples)
     hcp_org: "{{ lookup('env','HCP_ORG') }}"
     hcp_token: "{{ lookup('env','HCP_TF_TOKEN') }}"
     ws_name: "{{ lookup('env','TFC_WORKSPACE_NAME') }}"
 
-    notify_name: "{{ lookup('env','NOTIFY_NAME') | default('Generic webhook', true) }}"
+    notify_name: "{{ lookup('env','NOTIFY_NAME') | default('Webhook server test', true) }}"
     notify_destination_type: "{{ lookup('env','NOTIFY_DESTINATION_TYPE') | default('generic', true) }}"
-    notify_url: "{{ lookup('env','NOTIFY_URL') | default('', true) }}"
-    notify_triggers_raw: "{{ lookup('env','NOTIFY_TRIGGERS') | default('run:created,run:completed,run:errored', true) }}"
-    notify_enabled_str: "{{ lookup('env','WORKSPACE_NOTIFICATION_ENABLED') | default('true', true) }}"
+    notify_url: "{{ lookup('env','NOTIFY_URL') | default('https://httpstat.us/200', true) }}"
+    notify_triggers_raw: "{{ lookup('env','NOTIFY_TRIGGERS') | default('run:created,run:errored,run:needs_attention,run:planning', true) }}"
+
+    # Atributo enabled do payload (independe da flag de execução)
+    notify_enabled_str: "{{ lookup('env','NOTIFY_ENABLED') | default('false', true) }}"
 
   tasks:
     - name: "Normalizar enabled e triggers"
@@ -40,11 +42,11 @@
         status_code: [200]
       register: ws_resp
 
-    - name: "Extrair workspace_id"
+    - name: "workspace_id"
       set_fact:
         workspace_id: "{{ ws_resp.json.data.id }}"
 
-    # Tentativa 1: endpoint aninhado (type SINGULAR)
+    # POST direto, sem checar se já existe
     - name: "Criar notification (POST nested)"
       uri:
         url: "{{ api_base }}/workspaces/{{ workspace_id }}/notification-configurations"
@@ -56,47 +58,18 @@
         body_format: json
         body:
           data:
-            type: "notification-configuration"    # SINGULAR
+            type: "notification-configuration"   # SINGULAR (correto para create)
             attributes:
-              name: "{{ notify_name }}"
               destination-type: "{{ notify_destination_type }}"
+              name: "{{ notify_name }}"
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
+              # booleano real; NÃO string
               enabled: "{{ (notify_enabled | bool) | to_json | from_json }}"
         return_content: true
         status_code: [200, 201, 400, 409, 422, 500]
-      register: create_nested
+      register: create_resp
       failed_when: false
-
-    # Fallback: endpoint global (type PLURAL + relationships.workspace)
-    - name: "Criar notification (POST global) - fallback quando 500 no nested"
-      uri:
-        url: "{{ api_base }}/notification-configurations"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ hcp_token }}"
-          Content-Type: "application/vnd.api+json"
-          Accept: "application/vnd.api+json"
-        body_format: json
-        body:
-          data:
-            type: "notification-configurations"   # PLURAL no endpoint global
-            attributes:
-              name: "{{ notify_name }}"
-              destination-type: "{{ notify_destination_type }}"
-              url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
-              triggers: "{{ notify_triggers }}"
-              enabled: "{{ (notify_enabled | bool) | to_json | from_json }}"
-            relationships:
-              workspace:
-                data:
-                  type: "workspaces"
-                  id: "{{ workspace_id }}"
-        return_content: true
-        status_code: [200, 201, 400, 409, 422, 500]
-      register: create_global
-      failed_when: false
-      when: (create_nested.status | default(0)) == 500
 
     - name: "Resumo"
       debug:
@@ -104,11 +77,8 @@
           - "workspace_id={{ workspace_id }}"
           - "name={{ notify_name }}"
           - "destination-type={{ notify_destination_type }}"
-          - "enabled_requested={{ notify_enabled }}"
+          - "enabled_payload={{ notify_enabled }}"
           - "triggers={{ notify_triggers }}"
-          - "nested_status={{ create_nested.status | default('n/a') }}"
-          - "nested_x_request_id={{ create_nested.x_request_id | default('n/a') }}"
-          - "global_status={{ create_global.status | default('skipped') }}"
-          - "global_x_request_id={{ create_global.x_request_id | default('n/a') }}"
-          - "errors_nested={{ create_nested.json.errors | default([]) }}"
-          - "errors_global={{ create_global.json.errors | default([]) }}"
+          - "post_status={{ create_resp.status | default('n/a') }}"
+          - "notification_id={{ create_resp.json.data.id | default('unknown') }}"
+          - "post_errors={{ create_resp.json.errors | default([]) }}"
