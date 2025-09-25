@@ -84,7 +84,7 @@
               url: "{{ notify_url if notify_destination_type != 'email' else omit }}"
               triggers: "{{ notify_triggers }}"
               # booleano real; NÃO string
-              enabled: "{{ (notify_enabled | bool) | to_json | from_json }}"
+              enabled: false
         return_content: true
         status_code: [200, 201, 400, 409, 422, 500]
       register: create_resp
@@ -125,7 +125,7 @@
             id: "{{ notification_id }}"
             type: "notification-configurations"   # PLURAL no PATCH
             attributes:
-              enabled: "{{ (notify_enabled | bool) | to_json | from_json }}"
+              enabled: true
         return_content: true
         status_code: [200]
       register: patch_resp
