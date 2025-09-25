@@ -109,3 +109,36 @@
           - "post_status={{ create_resp.status | default('skipped') }}"
           - "notification_id={{ notification_id }}"
           - "errors={{ create_resp.json.errors | default([]) }}"
+    # ===== NOVO: PATCH opcional p/ ajustar 'enabled' após create ou quando já existe =====
+    - name: "PATCH: ajustar 'enabled' conforme variável (se tivermos ID)"
+      when: notification_id not in ['unknown', '']
+      uri:
+        url: "{{ api_base }}/notification-configurations/{{ notification_id }}"
+        method: PATCH
+        headers:
+          Authorization: "Bearer {{ hcp_token }}"
+          Content-Type: "application/vnd.api+json"
+          Accept: "application/vnd.api+json"
+        body_format: json
+        body:
+          data:
+            id: "{{ notification_id }}"
+            type: "notification-configurations"   # PLURAL no PATCH
+            attributes:
+              enabled: "{{ (notify_enabled | bool) | to_json | from_json }}"
+        return_content: true
+        status_code: [200]
+      register: patch_resp
+      failed_when: false
+
+    - name: "Resumo"
+      debug:
+        msg:
+          - "workspace_id={{ workspace_id }}"
+          - "name={{ notify_name }}"
+          - "already_existed={{ (existing_by_name | length) > 0 }}"
+          - "post_status={{ create_resp.status | default('skipped') }}"
+          - "notification_id={{ notification_id }}"
+          - "patch_status={{ patch_resp.status | default('skipped') }}"
+          - "errors_post={{ create_resp.json.errors | default([]) }}"
+          - "errors_patch={{ patch_resp.json.errors | default([]) }}"
