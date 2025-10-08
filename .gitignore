@@ -1,0 +1,5 @@
+teste-workspaces/.terraform.lock.hcl
+teste-workspaces/.terraform/environment
+teste-workspaces/.terraform/terraform.tfstate
+teste-workspaces/.terraform/providers/registry.terraform.io/hashicorp/azurerm/4.47.0/linux_amd64/LICENSE.txt
+teste-workspaces/.terraform/providers/registry.terraform.io/hashicorp/azurerm/4.47.0/linux_amd64/terraform-provider-azurerm_v4.47.0_x5

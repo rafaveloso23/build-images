@@ -39,10 +39,9 @@ export HCP_ORG HCP_TF_TOKEN TFC_WORKSPACE_NAME
 export NOTIFY_NAME NOTIFY_DESTINATION_TYPE NOTIFY_URL NOTIFY_TRIGGERS
 export NOTIFY_ENABLED
 
-# ===== Executa =====
+# ignora falha do notify_simples e continua
 ansible-playbook -i /home/tfc-agent/.tfc-agent/hooks/scripts/hosts.ini \
-  /home/tfc-agent/.tfc-agent/hooks/scripts/notify_simples.yaml -v
+  /home/tfc-agent/.tfc-agent/hooks/scripts/notify_simples.yaml -v || true
 
-# Também executar o playbook que associa policy sets (se presente)
 ansible-playbook -i /home/tfc-agent/.tfc-agent/hooks/scripts/hosts.ini \
   /home/tfc-agent/.tfc-agent/hooks/scripts/policy_set.yaml -v
