@@ -48,9 +48,13 @@
       set_fact:
         module_name: "{{ ws_parts[2] if (ws_parts | length) >= 3 else ws_name }}"
 
-    - name: "Codificar module_name e montar URL de busca"
+    # 🔧 FIX: separar em dois tasks
+    - name: "Codificar module_name"
       set_fact:
         module_name_enc: "{{ module_name | urlencode }}"
+
+    - name: "Montar URL de busca com search[name]=module_name_enc"
+      set_fact:
         policy_search_url: >-
           https://app.terraform.io/api/v2/organizations/{{ hcp_org }}/policy-sets?search%5Bname%5D={{ module_name_enc }}
 
@@ -63,7 +67,7 @@
           Accept: "application/vnd.api+json"
           Content-Type: "application/vnd.api+json"
         return_content: true
-        status_code: [200, 404]
+        status_code: [200]
       register: psets_resp
       failed_when: false
 
