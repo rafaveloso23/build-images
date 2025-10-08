@@ -17,6 +17,7 @@ WORKSPACE_NOTIFICATION_ENABLED="${WORKSPACE_NOTIFICATION_ENABLED:-false}"
 
 # Atributo enabled do payload (independente da flag acima) — default false
 NOTIFY_ENABLED="${NOTIFY_ENABLED:-false}"
+POLICY_ENABLED="${POLICY_ENABLED:-false}"
 
 # ===== Gate: só executa se WORKSPACE_NOTIFICATION_ENABLED for truthy =====
 shopt -s nocasematch
@@ -38,10 +39,18 @@ fi
 export HCP_ORG HCP_TF_TOKEN TFC_WORKSPACE_NAME
 export NOTIFY_NAME NOTIFY_DESTINATION_TYPE NOTIFY_URL NOTIFY_TRIGGERS
 export NOTIFY_ENABLED
+export POLICY_ENABLED
 
 # ignora falha do notify_simples e continua
 ansible-playbook -i /home/tfc-agent/.tfc-agent/hooks/scripts/hosts.ini \
   /home/tfc-agent/.tfc-agent/hooks/scripts/notify_simples.yaml -v || true
 
-ansible-playbook -i /home/tfc-agent/.tfc-agent/hooks/scripts/hosts.ini \
-  /home/tfc-agent/.tfc-agent/hooks/scripts/policy_set.yaml -v
+# Executa policy_set somente se POLICY_ENABLED for truthy
+shopt -s nocasematch
+if [[ "$POLICY_ENABLED" =~ ^(1|true|yes|on)$ ]]; then
+  ansible-playbook -i /home/tfc-agent/.tfc-agent/hooks/scripts/hosts.ini \
+    /home/tfc-agent/.tfc-agent/hooks/scripts/policy_set.yaml -v
+else
+  echo "[pre-plan] POLICY_ENABLED=$POLICY_ENABLED → pulando policy_set.yaml"
+fi
+shopt -u nocasematch
