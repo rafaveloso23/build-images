@@ -5,8 +5,6 @@
 
   vars:
     api_base: "https://app.terraform.io/api/v2"
-
-    # Variáveis de ambiente padrão do hook
     hcp_org: "{{ lookup('env','HCP_ORG') }}"
     hcp_token: "{{ lookup('env','HCP_TF_TOKEN') }}"
     ws_name_raw: "{{ lookup('env','TFC_WORKSPACE_NAME') }}"
@@ -48,7 +46,6 @@
       set_fact:
         module_name: "{{ ws_parts[2] if (ws_parts | length) >= 3 else ws_name }}"
 
-    # 🔧 FIX: separar em dois tasks
     - name: "Codificar module_name"
       set_fact:
         module_name_enc: "{{ module_name | urlencode }}"
@@ -67,17 +64,13 @@
           Accept: "application/vnd.api+json"
           Content-Type: "application/vnd.api+json"
         return_content: true
-        status_code: [200]
+        status_code: [200, 404]
       register: psets_resp
       failed_when: false
 
     - name: "Extrair candidates se resposta for 200"
       set_fact:
-        candidates: >-
-          {{
-            (psets_resp.status == 200)
-            | ternary(psets_resp.json.data | default([]), [])
-          }}
+        candidates: "{{ (psets_resp.status == 200) | ternary(psets_resp.json.data | default([]), []) }}"
 
     - name: "Resumo da busca"
       debug:
@@ -92,7 +85,6 @@
       meta: end_play
       when: (candidates | length) == 0
 
-    # Idempotente: se já estiver associado, o endpoint retorna 409
     - name: "Associar policy sets encontrados ao workspace"
       uri:
         url: "{{ api_base }}/policy-sets/{{ item.id }}/relationships/workspaces"
@@ -118,5 +110,5 @@
         msg:
           - "workspace={{ ws_name }} ({{ workspace_id }})"
           - "policy_sets_processados={{ candidates | map(attribute='attributes.name') | list }}"
-          - "status_por_policy={{ attach_resp.results | map(attribute='status') | list }}"
-          - "errors={{ attach_resp.results | map(attribute='json.errors') | list }}"
+          - "status_por_policy={{ (attach_resp.results | default([])) | map(attribute='status') | list }}"
+          - "errors={{ (attach_resp.results | default([])) | selectattr('json','defined') | map(attribute='json.errors') | list }}"
