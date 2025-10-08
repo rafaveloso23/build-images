@@ -21,9 +21,12 @@ POLICY_ENABLED="${POLICY_ENABLED:-false}"
 
 # ===== Gate: só executa se WORKSPACE_NOTIFICATION_ENABLED for truthy =====
 shopt -s nocasematch
+# Se a flag estiver false, vamos pular somente o playbook de notification (notify_simples)
+# mas continuar a execução do script para possibilitar a execução independente do policy_set.
+SKIP_NOTIFY=false
 if [[ ! "$WORKSPACE_NOTIFICATION_ENABLED" =~ ^(1|true|yes|on)$ ]]; then
-  echo "[pre-plan] WORKSPACE_NOTIFICATION_ENABLED=$WORKSPACE_NOTIFICATION_ENABLED → pulando criação."
-  exit 0
+  echo "[pre-plan] WORKSPACE_NOTIFICATION_ENABLED=$WORKSPACE_NOTIFICATION_ENABLED → pulando criação de notification (notify_simples)."
+  SKIP_NOTIFY=true
 fi
 shopt -u nocasematch
 
@@ -41,9 +44,13 @@ export NOTIFY_NAME NOTIFY_DESTINATION_TYPE NOTIFY_URL NOTIFY_TRIGGERS
 export NOTIFY_ENABLED
 export POLICY_ENABLED
 
-# ignora falha do notify_simples e continua
-ansible-playbook -i /home/tfc-agent/.tfc-agent/hooks/scripts/hosts.ini \
-  /home/tfc-agent/.tfc-agent/hooks/scripts/notify_simples.yaml -v || true
+# ignora falha do notify_simples e continua (apenas se não foi pedido para pular)
+if [[ "$SKIP_NOTIFY" != "true" ]]; then
+  ansible-playbook -i /home/tfc-agent/.tfc-agent/hooks/scripts/hosts.ini \
+    /home/tfc-agent/.tfc-agent/hooks/scripts/notify_simples.yaml -v || true
+else
+  echo "[pre-plan] notify_simples pulado por WORKSPACE_NOTIFICATION_ENABLED=$WORKSPACE_NOTIFICATION_ENABLED"
+fi
 
 # Executa policy_set somente se POLICY_ENABLED for truthy
 shopt -s nocasematch
