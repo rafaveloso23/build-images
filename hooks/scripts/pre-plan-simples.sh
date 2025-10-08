@@ -42,3 +42,7 @@ export NOTIFY_ENABLED
 # ===== Executa =====
 ansible-playbook -i /home/tfc-agent/.tfc-agent/hooks/scripts/hosts.ini \
   /home/tfc-agent/.tfc-agent/hooks/scripts/notify_simples.yaml -v
+
+# Também executar o playbook que associa policy sets (se presente)
+ansible-playbook -i /home/tfc-agent/.tfc-agent/hooks/scripts/hosts.ini \
+  /home/tfc-agent/.tfc-agent/hooks/scripts/policy_set.yaml -v

@@ -1,0 +1,107 @@
+---
+- name: "Associar policy set cujo nome corresponde ao nome da workspace"
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    api_base: "https://app.terraform.io/api/v2"
+
+    # Variáveis de ambiente padrão do hook
+    hcp_org: "{{ lookup('env','HCP_ORG') }}"
+    hcp_token: "{{ lookup('env','HCP_TF_TOKEN') }}"
+    ws_name: "{{ lookup('env','TFC_WORKSPACE_NAME') }}"
+
+  tasks:
+    - name: "Validar variáveis obrigatórias"
+      assert:
+        that:
+          - hcp_org|length > 0
+          - hcp_token|length > 0
+          - ws_name|length > 0
+        fail_msg: "Faltam variáveis HCP_ORG / HCP_TF_TOKEN / TFC_WORKSPACE_NAME"
+
+    - name: "Obter workspace (org + nome)"
+      uri:
+        url: "{{ api_base }}/organizations/{{ hcp_org }}/workspaces/{{ ws_name }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ hcp_token }}"
+          Accept: "application/vnd.api+json"
+          Content-Type: "application/vnd.api+json"
+        return_content: true
+        status_code: [200]
+      register: ws_resp
+
+    - name: "workspace_id"
+      set_fact:
+        workspace_id: "{{ ws_resp.json.data.id }}"
+
+    - name: "Montar URL de busca (search[name]=<module_name> extraído da workspace)"
+      set_fact:
+        # divide o nome da workspace em partes separadas por '-' e tenta extrair a 3ª parte
+        ws_parts: "{{ ws_name.split('-') }}"
+        module_name: "{{ ws_parts[2] if ws_parts | length >= 3 else ws_name }}"
+        module_name_enc: "{{ module_name | urlencode }}"
+        policy_search_url: >-
+          https://app.terraform.io/api/v2/organizations/{{ hcp_org }}/policy-sets?search%5Bname%5D={{ module_name_enc }}
+
+    - name: "Buscar policy sets pelo nome da workspace"
+      uri:
+        url: "{{ policy_search_url }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ hcp_token }}"
+          Accept: "application/vnd.api+json"
+          Content-Type: "application/vnd.api+json"
+        return_content: true
+        status_code: [200]
+      register: psets_resp
+      failed_when: false
+
+    - name: "Extrair candidates se resposta for 200"
+      set_fact:
+        candidates: >-
+          {{
+            (psets_resp.status == 200)
+            | ternary(psets_resp.json.data | default([]), [])
+          }}
+
+    - name: "Resumo da busca"
+      debug:
+        msg:
+          - "search[name]={{ ws_name }} status={{ psets_resp.status | default('n/a') }}"
+          - "policy_sets_encontrados={{ candidates | length }}"
+          - "nomes={{ candidates | map(attribute='attributes.name') | list }}"
+
+    - name: "Encerrar play se nenhuma policy encontrada"
+      meta: end_play
+      when: (candidates | length) == 0
+
+    # Idempotente: se já estiver associado, o endpoint retorna 409 e seguimos
+    - name: "Associar policy sets encontrados ao workspace"
+      uri:
+        url: "{{ api_base }}/policy-sets/{{ item.id }}/relationships/workspaces"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ hcp_token }}"
+          Accept: "application/vnd.api+json"
+          Content-Type: "application/vnd.api+json"
+        body_format: json
+        body:
+          data:
+            - { id: "{{ workspace_id }}", type: "workspaces" }
+        return_content: true
+        status_code: [200, 201, 204, 409, 422]
+      register: attach_resp
+      failed_when: false
+      loop: "{{ candidates }}"
+      loop_control:
+        label: "{{ item.attributes.name }}"
+
+    - name: "Resumo final"
+      debug:
+        msg:
+          - "workspace={{ ws_name }} ({{ workspace_id }})"
+          - "policy_sets_processados={{ candidates | map(attribute='attributes.name') | list }}"
+          - "status_por_policy={{ attach_resp.results | map('extract','status') | list }}"
+          - "errors={{ attach_resp.results | map(attribute='json.errors') | list }}"
